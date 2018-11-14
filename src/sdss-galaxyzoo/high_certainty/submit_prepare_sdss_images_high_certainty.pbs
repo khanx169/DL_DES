@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -l nodes=8:ppn=32:xe
+#PBS -l walltime=12:00:00
+#PBS -N preprocess_sdss
+#PBS -e logs/$PBS_JOBID.err
+#PBS -o logs/$PBS_JOBID.out
+#PBS -A baue
+#PBS -q high
+
+. /opt/modules/default/init/bash
+
+cd $PBS_O_WORKDIR
+
+source ~/origrc.sh
+module load bwpy bwpy-mpi
+
+echo Clipping cutoffs
+time aprun -n 128 -N 16 -d 2 -- bwpy-environ -- python clip_sdss_images.py
+
+echo Resizing images
+time aprun -n 128 -N 16 -d 2 -- bwpy-environ -- python resize_sdss_images.py
+
+echo Generating pseudocolor pngs
+time aprun -n 128 -N 16 -d 2 -- bwpy-environ -- python remap_sdss_images.py

@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -l nodes=8:ppn=32:xe
+#PBS -l walltime=12:00:00
+#PBS -N download_sdss
+#PBS -e logs/$PBS_JOBID.err
+#PBS -o logs/$PBS_JOBID.out
+#PBS -A baue
+#PBS -q high
+
+. /opt/modules/default/init/bash
+
+cd $PBS_O_WORKDIR
+
+source ~/origrc.sh
+module load bwpy bwpy-mpi
+
+time aprun -n 32 -N 4 -d 8 -- bwpy-environ -- python ./des_overlap/download_sdss_images.py

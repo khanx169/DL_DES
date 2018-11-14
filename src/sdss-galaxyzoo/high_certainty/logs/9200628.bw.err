@@ -1,0 +1,6 @@
+download_sdss_images.py:32: FutureWarning: Int64Index.data is deprecated and will be removed in a future version
+  objids = sorted(list(set(df.index.data)))
+
+real	535m7.734s
+user	0m2.148s
+sys	0m1.492s

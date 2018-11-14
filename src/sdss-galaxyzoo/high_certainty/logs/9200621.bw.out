@@ -1,0 +1,18 @@
+----------------------------------------
+Begin Torque Prologue on nid25352
+at Sun Nov 11 17:52:27 CST 2018
+Job Id:			9200621.bw
+Username:		wang19
+Group:			ILL_baue
+Job name:		download_sdss
+Requested resources:	nodes=16:ppn=32:xe,walltime=18:00:00,neednodes=16:ppn=32:xe
+Queue:			high
+Account:		baue
+End Torque Prologue:  0.117 elapsed
+----------------------------------------
+
+
+
+
+Application 70675876 exit codes: 2
+Application 70675876 resources: utime ~0s, stime ~16s, Rss ~28012, inblocks ~47424, outblocks ~0
