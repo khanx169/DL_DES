@@ -1,0 +1,3 @@
++ cd /home/khan74/scratch/new_DL_DES/
++ python /home/khan74/scratch/new_DL_DES/src/des/des_sdss_overlap/high_prob_overlap/scripts/cross_match.py
+slurmstepd: error: *** JOB 4399230 ON gpu007 CANCELLED AT 2018-11-14T12:06:57 DUE TO TIME LIMIT ***
