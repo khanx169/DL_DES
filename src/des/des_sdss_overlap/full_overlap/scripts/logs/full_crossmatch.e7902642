@@ -1,0 +1,26 @@
+----------------------------------------
+Begin Torque Prologue (Thu Nov 15 17:17:11 2018)
+Job ID:           7902642.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         full_crossmatch
+Limits:           walltime=02:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub314
+End Torque Prologue
+----------------------------------------
+----------------------------------------
+Begin Torque Epilogue (Thu Nov 15 17:40:36 2018)
+Job ID:           7902642.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         full_crossmatch
+Session:          72954
+Limits:           walltime=02:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Resources:        cput=00:25:43,vmem=13762588kb,walltime=00:23:26,mem=10071780kb,energy_used=0
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub314
+End Torque Epilogue
+----------------------------------------

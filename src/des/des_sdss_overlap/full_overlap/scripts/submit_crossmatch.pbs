@@ -1,0 +1,9 @@
+#!/bin/bash
+#PBS -l walltime=02:00:00
+#PBS -l nodes=1:ppn=8
+#PBS -N full_crossmatch
+#PBS -q secondary
+
+cd $PBS_O_WORKDIR
+
+python crossmatch.py

@@ -3,7 +3,7 @@
 #SBATCH -p GPU
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres=gpu:k80:4
-#SBATCH -t 08:00:00
+#SBATCH -t 01:00:00
 #SBATCH --verbose
 
 #SBATCH --mail-user=khan74@illinois.edu

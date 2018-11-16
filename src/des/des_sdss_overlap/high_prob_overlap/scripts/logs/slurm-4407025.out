@@ -1,0 +1,2 @@
++ cd /home/khan74/scratch/new_DL_DES/
++ python /home/khan74/scratch/new_DL_DES/src/des/des_sdss_overlap/high_prob_overlap/scripts/cross_match.py
