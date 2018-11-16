@@ -1,0 +1,26 @@
+----------------------------------------
+Begin Torque Prologue (Fri Nov 16 02:03:46 2018)
+Job ID:           7905167.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         download_full_overlap
+Limits:           walltime=04:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub176
+End Torque Prologue
+----------------------------------------
+----------------------------------------
+Begin Torque Epilogue (Fri Nov 16 04:04:25 2018)
+Job ID:           7905167.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         download_full_overlap
+Session:          96479
+Limits:           walltime=04:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Resources:        cput=00:25:32,vmem=577228kb,walltime=02:00:38,mem=108812kb,energy_used=0
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub176
+End Torque Epilogue
+----------------------------------------
