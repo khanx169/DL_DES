@@ -1,3 +1,9 @@
 #Ignore the data folders
 /data/sdss-galaxyzoo/high_certainty/images/
 /data/sdss-galaxyzoo/des_overlap/images/
+
+src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
+src/des/des_sdss_overlap/full_overlap/metadata/ret_sql_query
+
+#Ignore .ipynb checkpoints
+.ipynb_checkpoints
