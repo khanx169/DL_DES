@@ -3,6 +3,11 @@
 /data/sdss-galaxyzoo/des_overlap/images/
 /data/des/des_sdss_overlap/full_overlap/
 /data/des/des_sdss_overlap/high_prob_overlap/
+/deeplearning/data/train/
+/deeplearning/data/val/
+/deeplearning/data/FO_crossmatch_test/
+/deeplearning/data/HP_crossmatch_test/
+
 
 src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
 src/des/des_sdss_overlap/full_overlap/metadata/ret_sql_query
