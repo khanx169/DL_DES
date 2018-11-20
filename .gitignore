@@ -4,9 +4,10 @@
 /data/des/des_sdss_overlap/full_overlap/
 /data/des/des_sdss_overlap/high_prob_overlap/
 /deeplearning/data/train/
-/deeplearning/data/val/
+/deeplearning/data/valid/
 /deeplearning/data/FO_crossmatch_test/
 /deeplearning/data/HP_crossmatch_test/
+/deeplearning/weights/
 
 
 src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
