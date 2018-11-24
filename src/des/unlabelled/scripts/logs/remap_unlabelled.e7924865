@@ -1,0 +1,27 @@
+----------------------------------------
+Begin Torque Prologue (Fri Nov 23 00:54:38 2018)
+Job ID:           7924865.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            ncsa
+Job Name:         remap_unlabelled
+Limits:           walltime=12:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Job Queue:        ncsa
+Account:          ncsa
+Nodes:            golub139
+End Torque Prologue
+----------------------------------------
+=>> PBS: job killed: walltime 43241 exceeded limit 43200
+----------------------------------------
+Begin Torque Epilogue (Fri Nov 23 12:55:20 2018)
+Job ID:           7924865.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            ncsa
+Job Name:         remap_unlabelled
+Session:          54498
+Limits:           walltime=12:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Resources:        cput=11:38:58,vmem=4830856kb,walltime=12:00:41,mem=3645820kb,energy_used=0
+Job Queue:        ncsa
+Account:          ncsa
+Nodes:            golub139
+End Torque Epilogue
+----------------------------------------

@@ -1,0 +1,26 @@
+----------------------------------------
+Begin Torque Prologue (Thu Nov 22 13:16:32 2018)
+Job ID:           7923826.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            ncsa
+Job Name:         download_unlabelled_1
+Limits:           walltime=06:00:00,nodes=1:ppn=4,neednodes=1:ppn=4
+Job Queue:        ncsa
+Account:          ncsa
+Nodes:            golub139
+End Torque Prologue
+----------------------------------------
+----------------------------------------
+Begin Torque Epilogue (Thu Nov 22 17:01:56 2018)
+Job ID:           7923826.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            ncsa
+Job Name:         download_unlabelled_1
+Session:          72070
+Limits:           walltime=06:00:00,nodes=1:ppn=4,neednodes=1:ppn=4
+Resources:        cput=00:57:06,vmem=540376kb,walltime=03:45:25,mem=71896kb,energy_used=0
+Job Queue:        ncsa
+Account:          ncsa
+Nodes:            golub139
+End Torque Epilogue
+----------------------------------------

@@ -1,0 +1,26 @@
+----------------------------------------
+Begin Torque Prologue (Fri Nov 23 12:32:17 2018)
+Job ID:           7925405.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         rev_remap_unlabelled
+Limits:           walltime=04:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub186
+End Torque Prologue
+----------------------------------------
+----------------------------------------
+Begin Torque Epilogue (Fri Nov 23 16:32:53 2018)
+Job ID:           7925405.cc-mgmt1.campuscluster.illinois.edu
+Username:         khan74
+Group:            cs-courses
+Job Name:         rev_remap_unlabelled
+Session:          76965
+Limits:           walltime=04:00:00,nodes=1:ppn=8,neednodes=1:ppn=8
+Resources:        cput=04:01:02,vmem=4834044kb,walltime=04:00:13,mem=3641296kb,energy_used=0
+Job Queue:        secondary
+Account:          cs-courses
+Nodes:            golub186
+End Torque Epilogue
+----------------------------------------
