@@ -3,10 +3,13 @@
 /data/sdss-galaxyzoo/des_overlap/images/
 /data/des/des_sdss_overlap/full_overlap/
 /data/des/des_sdss_overlap/high_prob_overlap/
+/data/des/unlabelled/
+
 /deeplearning/data/train/
 /deeplearning/data/valid/
 /deeplearning/data/FO_crossmatch_test/
 /deeplearning/data/HP_crossmatch_test/
+/deeplearning/data/unlabelled/
 /deeplearning/weights/
 
 
