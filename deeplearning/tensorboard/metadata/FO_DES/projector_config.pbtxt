@@ -1,0 +1,4 @@
+embeddings {
+  tensor_name: "second_last_layer_embedding_1:0"
+  metadata_path: "metadata.tsv"
+}

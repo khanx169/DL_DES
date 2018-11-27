@@ -16,7 +16,7 @@
 src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
 src/des/des_sdss_overlap/full_overlap/metadata/ret_sql_query
 
-paper/
+/paper/
 
 #Ignore .ipynb checkpoints
 .ipynb_checkpoints
