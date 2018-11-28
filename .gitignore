@@ -11,10 +11,12 @@
 /deeplearning/data/HP_crossmatch_test/
 /deeplearning/data/unlabelled/
 /deeplearning/weights/
+/deeplearning/tensorboard/metadata/FO_DES/
+/deeplearning/tensorboard/metadata/HP_DES/
 
 
-src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
-src/des/des_sdss_overlap/full_overlap/metadata/ret_sql_query
+/src/des/des_sdss_overlap/high_prob_overlap/metadata/ret_sql_query
+/src/des/des_sdss_overlap/full_overlap/metadata/ret_sql_query
 
 /paper/
 
