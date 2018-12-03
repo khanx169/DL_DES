@@ -10,7 +10,9 @@
 /deeplearning/data/FO_crossmatch_test/
 /deeplearning/data/HP_crossmatch_test/
 /deeplearning/data/unlabelled/
+deeplearning/data/recursive/
 /deeplearning/weights/
+/deeplearning/recursive_weights/
 /deeplearning/tensorboard/metadata/
 
 
