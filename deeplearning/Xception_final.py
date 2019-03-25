@@ -14,9 +14,9 @@ parser.add_argument('--PATH', help='root directory', default='../')
 parser.add_argument('--num_gpus_per_node', type=int, help='number of GPUs per node', default=2)
 parser.add_argument('--device', help="device type: cpu or gpu", default='gpu')
 parser.add_argument('--verbose', type=int, help='output level', default=2)
-parser.add_argument('--num_intra', help='Number of intra threads', default=0)
-parser.add_argument('--num_inter', help='Number of inter threads', default=2)
-parser.add_argument('--num_workers', help='Number of workers in reading data', default=1)
+parser.add_argument('--num_intra', type=int, help='Number of intra threads', default=0)
+parser.add_argument('--num_inter', type=int, help='Number of inter threads', default=2)
+parser.add_argument('--num_workers', type=int, help='Number of workers in reading data', default=1)
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
