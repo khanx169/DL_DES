@@ -17,6 +17,7 @@ parser.add_argument('--verbose', type=int, help='output level', default=2)
 parser.add_argument('--num_intra', type=int, help='Number of intra threads', default=0)
 parser.add_argument('--num_inter', type=int, help='Number of inter threads', default=2)
 parser.add_argument('--num_workers', type=int, help='Number of workers in reading data', default=1)
+parser.add_argument('--horovod', type=bool, help='Whether use horovod', default=False)
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -47,19 +48,31 @@ from os.path import isfile, join, exists
 import seaborn as sn
 import pandas as pd 
 import numpy as np
-import horovod.keras as hvd
+if (args.horovod):
+    import horovod.keras as hvd
+    hvd.init()
+    print("Parallelization method: Horovod")
+    print("HOROVOD: I am rank %s of %s" %(hvd.rank(), hvd.size()))
+else:
+    class hvd:
+        def rank():
+            return 0
+        def size():
+            return 1
+        
 import tensorflow as tf
 from time import time
-hvd.init()
-print("Parallelization method: Horovod")
-print("HOROVOD: I am rank %s of %s" %(hvd.rank(), hvd.size()))
+
 
 if device=='gpu':
     if hvd.rank()==0:
         print("Using GPUs")
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    config.gpu_options.visible_device_list = str(hvd.local_rank()%num_gpus_per_node)
+    if (args.horovod):
+        config.gpu_options.visible_device_list = str(hvd.local_rank()%num_gpus_per_node)
+    else:
+        config.gpu_options.visible_device_list = '0'
 else:
     config = tf.ConfigProto(intra_op_parallelism_threads=args.num_intra,
                             inter_op_parallelism_threads=args.num_inter)
@@ -195,7 +208,8 @@ if (hvd.rank()==0):
     model_final.summary()
 
 opt = optimizers.Adam(lr=0.0001*hvd.size())
-opt = hvd.DistributedOptimizer(opt)
+if args.horovod:
+    opt = hvd.DistributedOptimizer(opt)
 model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=["accuracy"])
 
 
