@@ -10,14 +10,16 @@ import argparse
 parser = argparse.ArgumentParser(description="Xception input")
 parser.add_argument('--batch_size',type=int, help='batch size', default=64)
 parser.add_argument('--sz', type=int, help='size of the figure in each dimension', default=224)
-parser.add_argument('--PATH', help='root directory', default='../')
+parser.add_argument('--PATH', help='root directory', default='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/')
 parser.add_argument('--num_gpus_per_node', type=int, help='number of GPUs per node', default=2)
 parser.add_argument('--device', help="device type: cpu or gpu", default='gpu')
 parser.add_argument('--verbose', type=int, help='output level', default=2)
 parser.add_argument('--num_intra', type=int, help='Number of intra threads', default=0)
 parser.add_argument('--num_inter', type=int, help='Number of inter threads', default=2)
 parser.add_argument('--num_workers', type=int, help='Number of workers in reading data', default=1)
+parser.add_argument('--use_multiprocessing', type=bool, help='multiprocessing in data generator', default=False)
 parser.add_argument('--horovod', type=bool, help='Whether use horovod', default=False)
+parser.add_argument('--splitdata', type=bool, default=True, help='Whether to split data or not')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -48,6 +50,7 @@ from os.path import isfile, join, exists
 import seaborn as sn
 import pandas as pd 
 import numpy as np
+
 if (args.horovod):
     import horovod.keras as hvd
     hvd.init()
@@ -80,23 +83,39 @@ else:
 
 K.set_session(tf.Session(config=config))
 
-
+if hvd.rank()==0:
+    print("Tensorflow version: %s"%tf.__version__)
 # # 2. Load Data / Create data_generators
 
 # In[70]:
+files_s = os.listdir(PATH+'deeplearning/data/train/spiral')
+files_e = os.listdir(PATH+'deeplearning/data/train/elliptical')
 
 train_df = pd.read_csv(PATH + 'deeplearning/data/training_set.csv')
 val_df = pd.read_csv(PATH + 'deeplearning/data/validation_set.csv')
 HP_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/high_prob_crossmatch_test_set.csv')
 FO_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/full_overlap_crossmatch_test_set.csv')
 
-
 # #### flow_from_dir
 
 # In[71]:
-
-train_data_dir = PATH+'deeplearning/data/train/'
-validation_data_dir = PATH+'deeplearning/data/valid/'
+step_rescale=hvd.size()
+if args.splitdata and args.horovod:
+    
+    from splitdata import *
+    if (hvd.rank()==0):
+        print("Creating split datasets for different ranks (using symbolic links)")
+    t0 = time()
+    train_data_dir = SplitData(PATH+'deeplearning/data/train/', PATH+'deeplearning/data/trainsplit/',  hvd)
+    validation_data_dir = SplitData(PATH+'deeplearning/data/valid/', PATH+'deeplearning/data/validsplit/',  hvd)
+    print(train_data_dir)
+    t1 = time()
+    if (hvd.rank()==0):
+        print('Total time for split data: %s second' %(t1 - t0))
+    step_rescale=1
+else:
+    train_data_dir = PATH+'deeplearning/data/train/'
+    validation_data_dir = PATH+'deeplearning/data/valid/'
 
 HP_SDSS_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/sdss/'
 HP_DES_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/des/'
@@ -321,11 +340,12 @@ t0 = time()
 
 history_1 = model_final.fit_generator(
     train_generator,
-    steps_per_epoch = (train_generator.n // train_generator.batch_size)//hvd.size(),
+    steps_per_epoch = (train_generator.n // train_generator.batch_size)//step_rescale,
     epochs = 1,
     workers=num_workers, 
+    use_multiprocessing=args.use_multiprocessing,
     validation_data = validation_generator,
-    validation_steps = (validation_generator.n // validation_generator.batch_size)//hvd.size(), 
+    validation_steps = (validation_generator.n // validation_generator.batch_size)//step_rescale, 
     verbose=verbose
 ) 
 t1 = time()
@@ -354,10 +374,11 @@ if hvd.rank()==0:
     callbacks.append(checkpoint)
 # In[ ]:
 t0 = time()
-history2 = model_final.fit_generator(train_generator, steps_per_epoch=(train_generator.n // train_generator.batch_size)//hvd.size(), 
+history2 = model_final.fit_generator(train_generator, steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
                                      epochs=20, workers=num_workers,
+                                     use_multiprocessing=args.use_multiprocessing,
                                      validation_data=validation_generator, 
-                                     validation_steps=validation_generator.n // (validation_generator.batch_size)//hvd.size(), 
+                                     validation_steps=validation_generator.n // (validation_generator.batch_size)//step_rescale, 
                                      callbacks=callbacks, 
                                      verbose=verbose)
 t1 = time()
@@ -395,10 +416,11 @@ callbacks=callbacks+[Early_Stop, reduce_lr]
 #get_ipython().run_cell_magic('time', '', '
 t0 = time()
 history3 = model_final.fit_generator(train_generator, 
-                                     steps_per_epoch=(train_generator.n // train_generator.batch_size)//hvd.size(), 
+                                     steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
                                      epochs=20, workers=num_workers,   
+                                     use_multiprocessing=args.use_multiprocessing,
                                      validation_data=validation_generator, 
-                                     validation_steps=(validation_generator.n // validation_generator.batch_size//hvd.size()), 
+                                     validation_steps=(validation_generator.n // validation_generator.batch_size)//step_rescale, 
                                      callbacks=callbacks, 
                                      verbose=verbose)
 t1 = time()
