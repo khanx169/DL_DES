@@ -77,9 +77,12 @@ if device=='gpu':
     else:
         config.gpu_options.visible_device_list = '0'
 else:
+    if device!="cpu" and hvd.rank()==0:
+        print("I do not know %s. CPU is assumed"%device)
     config = tf.ConfigProto(intra_op_parallelism_threads=args.num_intra,
                             inter_op_parallelism_threads=args.num_inter)
     os.environ["CUDA_VISIBLE_DEVICES"]='-1'
+
 
 K.set_session(tf.Session(config=config))
 
@@ -88,8 +91,8 @@ if hvd.rank()==0:
 # # 2. Load Data / Create data_generators
 
 # In[70]:
-files_s = os.listdir(PATH+'deeplearning/data/train/spiral')
-files_e = os.listdir(PATH+'deeplearning/data/train/elliptical')
+#files_s = os.listdir(PATH+'deeplearning/data/train/spiral')
+#files_e = os.listdir(PATH+'deeplearning/data/train/elliptical')
 
 train_df = pd.read_csv(PATH + 'deeplearning/data/training_set.csv')
 val_df = pd.read_csv(PATH + 'deeplearning/data/validation_set.csv')
@@ -101,13 +104,13 @@ FO_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/full_overlap_crossmatch
 # In[71]:
 step_rescale=hvd.size()
 if args.splitdata and args.horovod:
-    
     from splitdata import *
     if (hvd.rank()==0):
         print("Creating split datasets for different ranks (using symbolic links)")
     t0 = time()
-    train_data_dir = SplitData(PATH+'deeplearning/data/train/', PATH+'deeplearning/data/trainsplit/',  hvd)
-    validation_data_dir = SplitData(PATH+'deeplearning/data/valid/', PATH+'deeplearning/data/validsplit/',  hvd)
+    train_data_dir = SplitData(PATH+'deeplearning/data/train/', PATH+'deeplearning/data/trainsplit-%s/'%hvd.size(), hvd)
+    validation_data_dir = SplitData(PATH+'deeplearning/data/valid/', PATH+'deeplearning/data/validsplit-%s/'%hvd.size(), hvd)
+    hvd.allreduce([0]) # this is to put a 
     print(train_data_dir)
     t1 = time()
     if (hvd.rank()==0):
@@ -165,16 +168,7 @@ batch_size = 1,
 class_mode = "categorical",
 shuffle = False,
 interpolation = 'nearest')
-'''
-gen = validation_generator
-m=0
-for i in gen:
-    m=m+1
-    idx = (gen.batch_index - 1) * gen.batch_size
-    print("Rank %s: %s %s" %(hvd.rank(), gen.batch_index, gen.filenames[idx : idx + gen.batch_size]))
-    if(m>4):
-        exit()
-'''
+
 HP_SDSS_test_generator = test_datagen.flow_from_directory(
 HP_SDSS_test_data_dir,
 target_size = (sz, sz),
