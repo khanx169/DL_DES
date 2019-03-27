@@ -20,18 +20,18 @@ parser.add_argument('--num_workers', type=int, help='Number of workers in readin
 parser.add_argument('--use_multiprocessing', type=bool, help='multiprocessing in data generator', default=False)
 parser.add_argument('--horovod', type=bool, help='Whether use horovod', default=False)
 parser.add_argument('--splitdata', type=bool, default=True, help='Whether to split data or not')
-parser.add_argument('--model', default='Xception', help='Choose model between Inception3, Xception, ResNet')
+parser.add_argument('--model', default='Xception', help='Choose model between Inception3, Xception, ResNet, VGG16, VGG19')
 parser.add_argument('--warmup_epochs', type=int, default=2, help='Warmup ephochs')
+parser.add_argument('--intermediate_score', type=bool, default=False, help='Whether output score for intermediate stages or not.')
+parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate')
 args = parser.parse_args()
-
-for arg in vars(args):
-    print(arg, getattr(args, arg))
 num_workers=args.num_workers
 PATH = args.PATH
 sz=args.sz
 batch_size=args.batch_size
 num_gpus_per_node=args.num_gpus_per_node
 device=args.device
+lr = args.learning_rate
 # In[67]:
 
 import numpy as np
@@ -56,6 +56,8 @@ import seaborn as sn
 import pandas as pd 
 import numpy as np
 
+
+#### Check whether using Horovod or not. If yes, initialize hvd.
 if (args.horovod):
     import horovod.keras as hvd
     hvd.init()
@@ -71,7 +73,12 @@ else:
 import tensorflow as tf
 from time import time
 
+#### Print command lines
+for arg in vars(args):
+    print(arg, getattr(args, arg))
+    print("Tensorflow version: %s"%tf.__version__)
 
+#### Setup session
 if device=='gpu':
     if hvd.rank()==0:
         print("Using GPUs")
@@ -88,11 +95,14 @@ else:
                             inter_op_parallelism_threads=args.num_inter)
     os.environ["CUDA_VISIBLE_DEVICES"]='-1'
 
-
 K.set_session(tf.Session(config=config))
 
-if hvd.rank()==0:
-    print("Tensorflow version: %s"%tf.__version__)
+#### define output verbose level
+if (hvd.rank()==0):
+    verbose = args.verbose
+else:
+    verbose = 0
+
 # # 2. Load Data / Create data_generators
 
 # In[70]:
@@ -115,16 +125,16 @@ if args.splitdata and args.horovod:
     t0 = time()
     train_data_dir = SplitData(PATH+'deeplearning/data/train/', PATH+'deeplearning/data/trainsplit-%s/'%hvd.size(), hvd)
     validation_data_dir = SplitData(PATH+'deeplearning/data/valid/', PATH+'deeplearning/data/validsplit-%s/'%hvd.size(), hvd)
-    hvd.allreduce([0]) # this is to put a 
-    print(train_data_dir)
+    hvd.allreduce([0]) # this is to put a barrier to ensure that we have all the data.
     t1 = time()
     if (hvd.rank()==0):
-        print('Total time for split data: %s second' %(t1 - t0))
+        print('** Total time for split data: %s second' %(t1 - t0))
     step_rescale=1
 else:
     train_data_dir = PATH+'deeplearning/data/train/'
     validation_data_dir = PATH+'deeplearning/data/valid/'
 
+#### will deal with the inference later
 HP_SDSS_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/sdss/'
 HP_DES_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/des/'
 
@@ -236,7 +246,7 @@ for layer in base_model.layers:
 if (hvd.rank()==0):
     model_final.summary()
 
-opt = optimizers.Adam(lr=0.0001*hvd.size())
+opt = optimizers.Adam(lr=lr*hvd.size())# Scale learning rate
 if args.horovod:
     opt = hvd.DistributedOptimizer(opt)
 model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=["accuracy"])
@@ -341,13 +351,7 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 
 
 # In[80]:
-if (hvd.rank()==0):
-    verbose = args.verbose
-else:
-    verbose = 0
-
 t0 = time()
-
 
 callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
              hvd.callbacks.MetricAverageCallback(),
@@ -362,13 +366,20 @@ history_1 = model_final.fit_generator(
     validation_steps = (validation_generator.n // validation_generator.batch_size)//step_rescale, 
     verbose=verbose, callbacks=callbacks) 
 t1 = time()
-train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-if (hvd.rank()==0):
-    print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 1: %s seconds' 
-          %(train_score[0], train_score[1], val_score[0], val_score[1], t1-t0))
-    model_final.save(PATH + 'deeplearning/weights/%sNew_freeze.h5'%args.model)
 
+if args.intermediate_score:
+    train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
+    val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
+    t2 = time()
+    if (hvd.rank()==0):
+        print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 2: %s seconds' 
+              %(train_score[0], train_score[1], val_score[0], val_score[1], t1-t0))
+        print('**Evaluation time: %s' %(t2-t1))
+else:
+    if (hvd.rank()==0):
+        print('**Total time for Stage 2: %s seconds'%(t1-t0))
+if (hvd.rank()==0):
+    model_final.save(PATH + 'deeplearning/weights/%sNew_freeze.h5'%args.model)
 
 #len(model_final.layers)
 
@@ -392,7 +403,8 @@ callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),
              Early_Stop, reduce_lr]
 if hvd.rank()==0:
     callbacks.append(checkpoint)
-# In[ ]:
+
+
 t0 = time()
 history2 = model_final.fit_generator(train_generator, steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
                                      epochs=20, workers=num_workers,
@@ -405,14 +417,17 @@ t1 = time()
 
 # #### (iii) Unfreeze [at Layer 2] 
 
-# In[9]:
-train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-
-if (hvd.rank()==0):
-    print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 2: %s seconds' 
-          %(train_score[0], train_score[1], val_score[0], val_score[1], t1-t0))
-
+if args.intermediate_score:
+    train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
+    val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
+    t2 = time()
+    if (hvd.rank()==0):
+        print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 2: %s seconds' 
+              %(train_score[0], train_score[1], val_score[0], val_score[1], t1-t0))
+        print('**Evaluation time: %s' %(t2-t1))
+else:
+    if (hvd.rank()==0):
+        print('**Total time for Stage 2: %s seconds'%(t1-t0))
 
 split_at = 2
 for layer in model_final.layers[:split_at]: layer.trainable = False
@@ -451,10 +466,11 @@ history3 = model_final.fit_generator(train_generator,
 t1 = time()
 train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
 val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-
+t2 = time()
 if (hvd.rank()==0):
     print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 3: %s seconds' 
           %(train_score[0], train_score[1], val_score[0], val_score[1], t1-t0))
+    print('**Evaluation time: %s' %(t2-t1))
     print("Saving model")
     model_final.save(PATH + 'deeplearning/weights/%s_Final.h5'%args.model)
 # In[28]:
