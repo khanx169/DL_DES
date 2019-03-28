@@ -119,6 +119,7 @@ FO_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/full_overlap_crossmatch
 # In[71]:
 step_rescale=hvd.size()
 if args.splitdata and args.horovod:
+    sys.path.append(PATH+"/deeplearning/")
     from splitdata import *
     if (hvd.rank()==0):
         print("Creating split datasets for different ranks (using symbolic links)")
