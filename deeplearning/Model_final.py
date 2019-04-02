@@ -24,6 +24,10 @@ parser.add_argument('--model', default='Xception', help='Choose model between In
 parser.add_argument('--warmup_epochs', type=int, default=2, help='Warmup ephochs')
 parser.add_argument('--intermediate_score', type=bool, default=False, help='Whether output score for intermediate stages or not.')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate')
+parser.add_argument('--early_stop', type=bool, default=True, help='Whether to do early stop or not.')
+parser.add_argument('--ephochs_1', type=int, default=1, help='Number of epoch for the first stage')
+parser.add_argument('--ephochs_2', type=int, default=20, help='Number of epoch for the second stage')
+parser.add_argument('--ephochs_3', type=int, default=20, help='Number of epoch for the third stage')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -360,7 +364,7 @@ callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),
 history_1 = model_final.fit_generator(
     train_generator,
     steps_per_epoch = (train_generator.n // train_generator.batch_size)//step_rescale,
-    epochs = 1,
+    epochs = args.ephochs_1,
     workers=num_workers, 
     use_multiprocessing=args.use_multiprocessing,
     validation_data = validation_generator,
@@ -397,18 +401,24 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 Early_Stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=3)
 reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-8, verbose=verbose, mode='min')
 checkpoint = keras.callbacks.ModelCheckpoint(PATH + 'deeplearning/weights/%s_new_UnFreeze.h5'%args.model, monitor='val_loss', verbose=verbose, save_best_only=True, save_weights_only=False, mode='min', period=1)
+if args.early_stop:
+    callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
+                 hvd.callbacks.MetricAverageCallback(),
+                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
+                 Early_Stop, reduce_lr]
+else:
+    callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
+                 hvd.callbacks.MetricAverageCallback(),
+                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
+                 reduce_lr]
 
-callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
-             hvd.callbacks.MetricAverageCallback(),
-             hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
-             Early_Stop, reduce_lr]
 if hvd.rank()==0:
     callbacks.append(checkpoint)
 
 
 t0 = time()
 history2 = model_final.fit_generator(train_generator, steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
-                                     epochs=20, workers=num_workers,
+                                     epochs=args.epochs_2, workers=num_workers,
                                      use_multiprocessing=args.use_multiprocessing,
                                      validation_data=validation_generator, 
                                      validation_steps=validation_generator.n // (validation_generator.batch_size)//step_rescale, 
@@ -449,8 +459,10 @@ callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),
          ]
 if hvd.rank()==0:
     callbacks.append(checkpoint)
-
-callbacks=callbacks+[Early_Stop, reduce_lr]
+if args.early_stop:
+    callbacks=callbacks+[Early_Stop, reduce_lr]
+else:
+    callbacks=callbacks+[reduce_lr]
 
 # In[16]:
 
@@ -458,7 +470,7 @@ callbacks=callbacks+[Early_Stop, reduce_lr]
 t0 = time()
 history3 = model_final.fit_generator(train_generator, 
                                      steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
-                                     epochs=20, workers=num_workers,   
+                                     epochs=args.epochs_3, workers=num_workers,   
                                      use_multiprocessing=args.use_multiprocessing,
                                      validation_data=validation_generator, 
                                      validation_steps=(validation_generator.n // validation_generator.batch_size)//step_rescale, 
