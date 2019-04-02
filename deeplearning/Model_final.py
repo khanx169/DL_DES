@@ -25,9 +25,9 @@ parser.add_argument('--warmup_epochs', type=int, default=2, help='Warmup ephochs
 parser.add_argument('--intermediate_score', type=bool, default=False, help='Whether output score for intermediate stages or not.')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate')
 parser.add_argument('--early_stop', type=bool, default=True, help='Whether to do early stop or not.')
-parser.add_argument('--ephochs_1', type=int, default=1, help='Number of epoch for the first stage')
-parser.add_argument('--ephochs_2', type=int, default=20, help='Number of epoch for the second stage')
-parser.add_argument('--ephochs_3', type=int, default=20, help='Number of epoch for the third stage')
+parser.add_argument('--epochs_1', type=int, default=1, help='Number of epoch for the first stage')
+parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch for the second stage')
+parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -364,7 +364,7 @@ callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0),
 history_1 = model_final.fit_generator(
     train_generator,
     steps_per_epoch = (train_generator.n // train_generator.batch_size)//step_rescale,
-    epochs = args.ephochs_1,
+    epochs = args.epochs_1,
     workers=num_workers, 
     use_multiprocessing=args.use_multiprocessing,
     validation_data = validation_generator,
@@ -382,7 +382,7 @@ if args.intermediate_score:
         print('**Evaluation time: %s' %(t2-t1))
 else:
     if (hvd.rank()==0):
-        print('**Total time for Stage 2: %s seconds'%(t1-t0))
+        print('**Total time for Stage 1: %s seconds'%(t1-t0))
 if (hvd.rank()==0):
     model_final.save(PATH + 'deeplearning/weights/%sNew_freeze.h5'%args.model)
 
