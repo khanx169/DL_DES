@@ -45,7 +45,6 @@ def hdf5_from_directory(fname, directory, datagen,
  #       f['filenames'][i*batch_size:(i+1)*batch_size, 0]=dataflow.filenames[i*batch_size:(i+1)*batch_size]
         f['data'][i*batch_size:(i+1)*batch_size] = x
         f['labels'][i*batch_size:(i+1)*batch_size] = y
-        print(y)
         i=i+1
     f.close()
     print('-----------------------------------')

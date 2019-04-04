@@ -3,7 +3,7 @@
 # # 1. Import Libraries 
 
 # In[65]:
-
+from __future__ import print_function
 import sys
 ### command line parsers
 import argparse
@@ -12,22 +12,22 @@ parser.add_argument('--batch_size',type=int, help='batch size', default=64)
 parser.add_argument('--sz', type=int, help='size of the figure in each dimension', default=224)
 parser.add_argument('--PATH', help='root directory', default='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/')
 parser.add_argument('--num_gpus_per_node', type=int, help='number of GPUs per node', default=2)
-parser.add_argument('--device', help="device type: cpu or gpu", default='gpu')
+parser.add_argument('--device', help="device type: cpu or gpu", default='cpu')
 parser.add_argument('--verbose', type=int, help='output level', default=2)
 parser.add_argument('--num_intra', type=int, help='Number of intra threads', default=0)
 parser.add_argument('--num_inter', type=int, help='Number of inter threads', default=2)
 parser.add_argument('--num_workers', type=int, help='Number of workers in reading data', default=1)
-parser.add_argument('--use_multiprocessing', type=bool, help='multiprocessing in data generator', default=False)
-parser.add_argument('--horovod', type=bool, help='Whether use horovod', default=False)
-parser.add_argument('--splitdata', type=bool, default=True, help='Whether to split data or not')
+parser.add_argument('--use_multiprocessing',action='store_true', help='multiprocessing in data generator')
+parser.add_argument('--horovod', action='store_true', help='Whether use horovod')
 parser.add_argument('--model', default='Xception', help='Choose model between Inception3, Xception, ResNet, VGG16, VGG19')
 parser.add_argument('--warmup_epochs', type=int, default=2, help='Warmup ephochs')
-parser.add_argument('--intermediate_score', type=bool, default=False, help='Whether output score for intermediate stages or not.')
+parser.add_argument('--intermediate_score', action='store_true', help='Whether output score for intermediate stages or not.')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate')
-parser.add_argument('--early_stop', type=bool, default=True, help='Whether to do early stop or not.')
+parser.add_argument('--early_stop', action='store_true', help='Whether to do early stop or not.')
 parser.add_argument('--epochs_1', type=int, default=1, help='Number of epoch for the first stage')
 parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch for the second stage')
 parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
+parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -78,10 +78,12 @@ import tensorflow as tf
 from time import time
 
 #### Print command lines
-for arg in vars(args):
-    print(arg, getattr(args, arg))
-    print("Tensorflow version: %s"%tf.__version__)
-
+if hvd.rank()==0:
+    print("*** User input parameters *** ")
+    for arg in vars(args):
+        print("* %s: %s"%(arg, getattr(args, arg)))
+    print("* Tensorflow version: %s"%tf.__version__)
+    print("*************************************************")
 #### Setup session
 if device=='gpu':
     if hvd.rank()==0:
@@ -122,7 +124,7 @@ FO_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/full_overlap_crossmatch
 
 # In[71]:
 step_rescale=hvd.size()
-if args.splitdata and args.horovod:
+if args.splitdata and args.horovod and hvd.size()>1:
     sys.path.append(PATH+"/deeplearning/")
     from splitdata import *
     if (hvd.rank()==0):
@@ -357,10 +359,12 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 
 # In[80]:
 t0 = time()
-
-callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
-             hvd.callbacks.MetricAverageCallback(),
-             hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose)]
+if (args.horovod):
+    callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
+                 hvd.callbacks.MetricAverageCallback(),
+                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose)]
+else:
+    callbacks = []
 history_1 = model_final.fit_generator(
     train_generator,
     steps_per_epoch = (train_generator.n // train_generator.batch_size)//step_rescale,
@@ -389,8 +393,9 @@ if (hvd.rank()==0):
 #len(model_final.layers)
 
 # In[18]:
-
 split_at = 40
+if args.model=='VGG16' or args.model=='VGG19':
+    split_at=20
 for layer in model_final.layers[:split_at]: layer.trainable = False
 for layer in model_final.layers[split_at:]: layer.trainable = True  
 
@@ -401,16 +406,17 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 Early_Stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=3)
 reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-8, verbose=verbose, mode='min')
 checkpoint = keras.callbacks.ModelCheckpoint(PATH + 'deeplearning/weights/%s_new_UnFreeze.h5'%args.model, monitor='val_loss', verbose=verbose, save_best_only=True, save_weights_only=False, mode='min', period=1)
-if args.early_stop:
+if args.horovod:
     callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
                  hvd.callbacks.MetricAverageCallback(),
-                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
-                 Early_Stop, reduce_lr]
+                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),]
 else:
-    callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
-                 hvd.callbacks.MetricAverageCallback(),
-                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
-                 reduce_lr]
+    callbacks = []
+if args.early_stop:
+    callbacks = callbacks + [Early_Stop, reduce_lr]
+else:
+    callbacks = callbacks + [Early_Stop, reduce_lr]
+
 
 if hvd.rank()==0:
     callbacks.append(checkpoint)
@@ -453,10 +459,13 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 Early_Stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=3)
 reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-8, verbose=verbose, mode='min')
 checkpoint = keras.callbacks.ModelCheckpoint(PATH + 'deeplearning/weights/%s_new_UnFreeze_2.h5'%args.model, monitor='val_loss', verbose=verbose, save_best_only=True, save_weights_only=False, mode='min', period=1)
-callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
-             hvd.callbacks.MetricAverageCallback(),
-             hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
-         ]
+if args.horovod:
+    callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
+                 hvd.callbacks.MetricAverageCallback(),
+                 hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose),
+             ]
+else:
+    callbacks=[]
 if hvd.rank()==0:
     callbacks.append(checkpoint)
 if args.early_stop:
