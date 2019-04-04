@@ -1,8 +1,10 @@
 import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
+
+from keras_preprocessing import image
 import h5py
 import numpy as np
-class DirectoryIteratorOffset(DirectoryIterator):
+class DirectoryIteratorOffset(image.DirectoryIterator):
     def __init__(self,
                  directory,
                  image_data_generator,
@@ -73,7 +75,7 @@ def hdf5_from_directory(fname, directory, datagen,
         follow_links=False,
         interpolation=interpolation, offset=offset, nsample=nsample)
     f=h5py.File(fname, 'w')
-    x, y = dataflow.__next__()
+    x, y = dataflow[0]
     #    f.create_dataset('filenames', shape=(dataflow.n, 1), dtype='S32')
     x_shape = (dataflow.n, ) + x.shape[1:]
     y_shape = (dataflow.n, ) + y.shape[1:]
@@ -86,9 +88,9 @@ def hdf5_from_directory(fname, directory, datagen,
     ds.attrs['image_shape'] = (s1, s2)
     ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8, chunks=True)
     ys.attrs['shape'] = y_shape
-    i=0
-    while(i<dataflow.n//batch_size):
-        x, y = dataflow.__next__()
+    
+    for i in range(dataflow.n//batch_size):
+        x, y = dataflow[0]
  #       f['filenames'][i*batch_size:(i+1)*batch_size, 0]=dataflow.filenames[i*batch_size:(i+1)*batch_size]
         f['data'][i*batch_size:(i+1)*batch_size] = x
         f['labels'][i*batch_size:(i+1)*batch_size] = y

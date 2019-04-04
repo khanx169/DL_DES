@@ -47,20 +47,25 @@ print(" time: %s second" %(t1-t0))
 
 print("Creating HDF5 file for validation data: ")
 hdf5_from_directory("val.hdf5",
-                    './data/val', datagen,
+                    './data/valid', datagen,
                     target_size=(sz, sz),
                     batch_size=1,
                     class_mode="categorical",
                     interpolation='nearest')
 t2 = time()
 print(" time: %s second" %(t2-t1))
-gen = HDF5ImageGenerator(horizontal_flip=True)
+gen = HDF5ImageGenerator(horizontal_flip = True,
+                         vertical_flip = True,
+                         fill_mode = "nearest",
+                         zoom_range = 0.3,
+                         width_shift_range = 0.3,
+                         height_shift_range=0.3,
+                         rotation_range=45)
 fh = h5py.File('./data/train.hdf5', 'r')
 df = gen.flow_from_hdf5(fh)
+print("Testing flow from HDF5 performance")
 t3 = time()
-while i<df.n//batch_size:
-    a = next(df)
-    x, y = a
-    i=i+1
+for i in tqdm(range(nbatch)):
+    x, y = next(df)
 t4 = time()
-print(" time for flow from HDF5: %s " %(t4-t3))
+print("Throughput: %s images per second" %(nbatch*batch_size/(t4-t3)))
