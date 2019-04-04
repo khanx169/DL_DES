@@ -2,6 +2,53 @@ import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import h5py
 import numpy as np
+class DirectoryIteratorOffset(DirectoryIterator):
+    def __init__(self,
+                 directory,
+                 image_data_generator,
+                 target_size=(256, 256),
+                 color_mode='rgb',
+                 classes=None,
+                 class_mode='categorical',
+                 batch_size=32,
+                 shuffle=True,
+                 seed=None,
+                 data_format='channels_last',
+                 save_to_dir=None,
+                 save_prefix='',
+                 save_format='png',
+                 follow_links=False,
+                 subset=None,
+                 interpolation='nearest',
+                 dtype='float32', offset=0, nsample=None):
+        self.offset=offset
+
+        super().__init__(directory,
+                         image_data_generator=image_data_generator,
+                         target_size=target_size,
+                         color_mode=color_mode,
+                         classes=classes,
+                         class_mode=class_mode,
+                         batch_size=batch_size,
+                         shuffle=shuffle,
+                         seed=seed,
+                         data_format=data_format,
+                         save_to_dir=save_to_dir,
+                         save_prefix=save_prefix,
+                         save_format=save_format,
+                         follow_links=follow_links,
+                         subset=subset,
+                         interpolation=interpolation,
+                         dtype=dtype)
+        if (nsample==None):
+            self.nsample=self.n
+    def _set_index_array(self):
+        ''' Overwrite the _set_index_array_ in array generator to make it to use multiple rank'''
+        self.index_array = np.arange(self.offset, self.offset + self.nsample)
+        if self.shuffle:
+            np.random.shuffle(self.index_array)
+        self.n = self.nsample
+            
 def hdf5_from_directory(fname, directory, datagen,
                         target_size=(256, 256),
                         color_mode='rgb',
@@ -11,12 +58,12 @@ def hdf5_from_directory(fname, directory, datagen,
                         batch_size=32,
                         data_format='channels_last',
                         interpolation='nearest',
-                        dtype='float32'):
+                        dtype='float32', offset=0, nsample=None):
     s1, s2 = target_size
     print('-----------------------------------')
     print("Reading images from %s: " %directory)
-    dataflow = datagen.flow_from_directory(
-        directory,
+    dataflow = DirectoryIteratorOffset(
+        directory,datagen,
         target_size=target_size,
         color_mode=color_mode,
         classes=classes,
@@ -24,7 +71,7 @@ def hdf5_from_directory(fname, directory, datagen,
         batch_size=batch_size,
         shuffle=shuffle,
         follow_links=False,
-        interpolation=interpolation)
+        interpolation=interpolation, offset=offset, nsample=nsample)
     f=h5py.File(fname, 'w')
     x, y = dataflow.__next__()
     #    f.create_dataset('filenames', shape=(dataflow.n, 1), dtype='S32')

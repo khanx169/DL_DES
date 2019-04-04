@@ -3,12 +3,39 @@ import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 from hdf5_preprocessing import *
 import h5py
+from tqdm import tqdm
 from time import time
 sz = 224
-batch_size=16
-datagen = ImageDataGenerator(rescale = 1./255)    
+batch_size=64
+
+print("Testing flow from directory performance")
+nbatch=50
+train_datagen = ImageDataGenerator(
+    rescale = 1./255,
+    horizontal_flip = True,
+    vertical_flip = True,
+    fill_mode = "nearest",
+    zoom_range = 0.3,
+    width_shift_range = 0.3,
+    height_shift_range=0.3,
+    rotation_range=45)
+train_generator = train_datagen.flow_from_directory(
+    "./data/train",
+    target_size = (sz, sz),
+    batch_size = batch_size,
+    class_mode = "categorical",
+    shuffle = True,
+    interpolation = 'nearest')
+t0 = time()
+for i in tqdm(range(nbatch)):
+    next(train_generator)
+t1 = time()
+print("Throughput: %s images per second" %(nbatch*batch_size/(t1-t0)))
+
+
 t0 = time()
 print("Creating HDF5 file for train data: ")
+datagen = ImageDataGenerator(rescale = 1./255)    
 hdf5_from_directory("./data/train.hdf5",
                     './data/train', datagen,
                     target_size=(sz, sz),
