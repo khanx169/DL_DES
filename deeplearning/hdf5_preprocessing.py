@@ -2,8 +2,11 @@ import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 
 from keras_preprocessing import image
+
 import h5py
 import numpy as np
+from tqdm import tqdm
+from mpi4py import MPI
 class DirectoryIteratorOffset(image.DirectoryIterator):
     def __init__(self,
                  directory,
@@ -24,7 +27,7 @@ class DirectoryIteratorOffset(image.DirectoryIterator):
                  interpolation='nearest',
                  dtype='float32', offset=0, nsample=None):
         self.offset=offset
-
+        self.nsample=nsample
         super().__init__(directory,
                          image_data_generator=image_data_generator,
                          target_size=target_size,
@@ -49,7 +52,6 @@ class DirectoryIteratorOffset(image.DirectoryIterator):
         self.index_array = np.arange(self.offset, self.offset + self.nsample)
         if self.shuffle:
             np.random.shuffle(self.index_array)
-        self.n = self.nsample
             
 def hdf5_from_directory(fname, directory, datagen,
                         target_size=(256, 256),
@@ -60,11 +62,11 @@ def hdf5_from_directory(fname, directory, datagen,
                         batch_size=32,
                         data_format='channels_last',
                         interpolation='nearest',
-                        dtype='float32', offset=0, nsample=None):
-    s1, s2 = target_size
-    print('-----------------------------------')
-    print("Reading images from %s: " %directory)
-    dataflow = DirectoryIteratorOffset(
+                        dtype='float32', nsample=None, verbose=1, mpi=False):
+    if (verbose!=0):
+        print('-----------------------------------')
+        print("Creating HDF5 from %s: " %directory)
+    dataflow = image.DirectoryIterator(
         directory,datagen,
         target_size=target_size,
         color_mode=color_mode,
@@ -73,28 +75,46 @@ def hdf5_from_directory(fname, directory, datagen,
         batch_size=batch_size,
         shuffle=shuffle,
         follow_links=False,
-        interpolation=interpolation, offset=offset, nsample=nsample)
-    f=h5py.File(fname, 'w')
+        interpolation=interpolation)
+    if nsample==None:
+        nsample = dataflow.n
+    rank=0;size=1
+    if (mpi):
+        comm = MPI.COMM_WORLD
+        f=h5py.File(fname, 'w', driver='mpio', comm=comm)
+        rank = comm.rank
+        size = comm.size
+        if (rank==0):
+            print("Writing HDF5 files using %s processors"%size)
+    else:
+        f=h5py.File(fname, 'w')
     x, y = dataflow[0]
     #    f.create_dataset('filenames', shape=(dataflow.n, 1), dtype='S32')
-    x_shape = (dataflow.n, ) + x.shape[1:]
-    y_shape = (dataflow.n, ) + y.shape[1:]
-    if (data_format=='channels_last'):
-        ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=True)
-    else:
-        ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=True)
+    x_shape = (nsample, ) + x.shape[1:]
+    y_shape = (nsample, ) + y.shape[1:]
+    ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=True)
     ds.attrs['data_format'] = data_format
     ds.attrs['shape'] = x_shape
-    ds.attrs['image_shape'] = (s1, s2)
+    ds.attrs['image_shape'] = target_size
     ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8, chunks=True)
     ys.attrs['shape'] = y_shape
-    
-    for i in range(dataflow.n//batch_size):
-        x, y = dataflow[0]
- #       f['filenames'][i*batch_size:(i+1)*batch_size, 0]=dataflow.filenames[i*batch_size:(i+1)*batch_size]
+    nb_global = nsample//batch_size
+    nb_local = nb_global//size
+    nb_offset = nb_local*rank
+    if (rank<nb_global%size):
+        nb_local+=1
+        nb_offset+=rank
+    it = range(nb_offset, nb_offset+nb_local)
+    if (verbose!=0):
+        it = tqdm(it)
+    for i in it:
+        x, y = dataflow[i]
+        #       f['filenames'][i*batch_size:(i+1)*batch_size, 0]=dataflow.filenames[i*batch_size:(i+1)*batch_size]
         f['data'][i*batch_size:(i+1)*batch_size] = x
         f['labels'][i*batch_size:(i+1)*batch_size] = y
-        i=i+1
+    if (nsample%batch_size!=0 and rank==size-1):
+        f['data'][nsample-nsample%batch_size:nsample] = x[:nsample%batch_size]
+        f['labels'][nsample-nsample%batch_size:nsample] = y[:nsample%batch_size]
     f.close()
     print('-----------------------------------')
 
