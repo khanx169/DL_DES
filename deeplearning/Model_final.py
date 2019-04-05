@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 # # 1. Import Libraries 
-
+from time import time
+t_start= time()
 # In[65]:
 from __future__ import print_function
 import sys
@@ -27,6 +28,7 @@ parser.add_argument('--early_stop', action='store_true', help='Whether to do ear
 parser.add_argument('--epochs_1', type=int, default=1, help='Number of epoch for the first stage')
 parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch for the second stage')
 parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
+parser.add_argument('--hdf5', action='store_true', help='Train from hdf5 file or not')
 parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
 args = parser.parse_args()
 num_workers=args.num_workers
@@ -53,7 +55,7 @@ from keras.models import load_model
 import os
 from os import listdir
 from os.path import isfile, join, exists
-
+import tensorflow as tf
 #import matplotlib.pyplot as plt
 #from matplotlib.ticker import MultipleLocator
 import seaborn as sn
@@ -74,8 +76,7 @@ else:
         def size():
             return 1
         
-import tensorflow as tf
-from time import time
+
 
 #### Print command lines
 if hvd.rank()==0:
@@ -109,18 +110,6 @@ if (hvd.rank()==0):
 else:
     verbose = 0
 
-# # 2. Load Data / Create data_generators
-
-# In[70]:
-#files_s = os.listdir(PATH+'deeplearning/data/train/spiral')
-#files_e = os.listdir(PATH+'deeplearning/data/train/elliptical')
-
-train_df = pd.read_csv(PATH + 'deeplearning/data/training_set.csv')
-val_df = pd.read_csv(PATH + 'deeplearning/data/validation_set.csv')
-HP_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/high_prob_crossmatch_test_set.csv')
-FO_crossmatch_df = pd.read_csv(PATH + 'deeplearning/data/full_overlap_crossmatch_test_set.csv')
-
-# #### flow_from_dir
 
 # In[71]:
 step_rescale=hvd.size()
@@ -141,18 +130,11 @@ else:
     train_data_dir = PATH+'deeplearning/data/train/'
     validation_data_dir = PATH+'deeplearning/data/valid/'
 
-#### will deal with the inference later
-HP_SDSS_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/sdss/'
-HP_DES_test_data_dir = PATH+'deeplearning/data/HP_crossmatch_test/des/'
 
-FO_SDSS_test_data_dir = PATH+'deeplearning/data/FO_crossmatch_test/sdss/'
-FO_DES_test_data_dir = PATH+'deeplearning/data/FO_crossmatch_test/des/'
-
-
-# In[72]:
-
-train_datagen = ImageDataGenerator(
-    rescale = 1./255,
+if args.hdf5:
+    from hdf5_preprocessing import *
+    train_datagen = HDF5ImageGenerator(
+#    rescale = 1./255,
     horizontal_flip = True,
     vertical_flip = True,
     fill_mode = "nearest",
@@ -160,65 +142,69 @@ train_datagen = ImageDataGenerator(
     width_shift_range = 0.3,
     height_shift_range=0.3,
     rotation_range=45)
+    valid_datagen = HDF5ImageGenerator()
+    train_fh = h5py.File(PATH+'/deeplearning/data/train_save.hdf5', 'r')
+    ntrain = train_fh['data'].shape[0]
+    ntrain_loc = ntrain//hvd.size()
+    train_offset = ntrain_loc*hvd.rank()
+    train_generator = train_datagen.flow_from_hdf5(
+        train_fh, 
+#        target_size = (sz, sz),
+        batch_size = batch_size, 
+#        class_mode = "categorical",
+        shuffle = True,
+#        interpolation = 'nearest',
+        offset=train_offset, nsample=ntrain_loc)
+    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_save.hdf5', 'r')
+    nvalid = valid_fh['data'].shape[0]
+    nvalid_loc = nvalid//hvd.size()
+    valid_offset = nvalid_loc*hvd.rank()
 
-valid_datagen = ImageDataGenerator(rescale = 1./255)
+    validation_generator = valid_datagen.flow_from_hdf5(
+        valid_fh,
+#        target_size = (sz, sz),
+        batch_size = 1,
+#        class_mode = "categorical",
+        shuffle = False,
+#        interpolation = 'nearest',
+        offset=valid_offset, nsample=nvalid_loc)
+else:
+    train_datagen = ImageDataGenerator(
+        rescale = 1./255,
+        horizontal_flip = True,
+        vertical_flip = True,
+        fill_mode = "nearest",
+        zoom_range = 0.3,
+        width_shift_range = 0.3,
+        height_shift_range=0.3,
+        rotation_range=45)
+    
+    valid_datagen = ImageDataGenerator(rescale = 1./255)
+    
+    test_datagen = ImageDataGenerator(
+        rescale = 1./255,
+        horizontal_flip = True,
+        vertical_flip = True,
+        fill_mode = "nearest",
+        zoom_range = 0.3,
+        width_shift_range = 0.3,
+        height_shift_range=0.3,
+        rotation_range=45)
+    train_generator = train_datagen.flow_from_directory(
+        train_data_dir,
+        target_size = (sz, sz),
+        batch_size = batch_size, 
+        class_mode = "categorical",
+        shuffle = True,
+        interpolation = 'nearest')
 
-test_datagen = ImageDataGenerator(
-    rescale = 1./255,
-    horizontal_flip = True,
-    vertical_flip = True,
-    fill_mode = "nearest",
-    zoom_range = 0.3,
-    width_shift_range = 0.3,
-    height_shift_range=0.3,
-    rotation_range=45)
-
-
-
-train_generator = train_datagen.flow_from_directory(
-    train_data_dir,
-    target_size = (sz, sz),
-    batch_size = batch_size, 
-    class_mode = "categorical",
-    shuffle = True,
-    interpolation = 'nearest')
-
-validation_generator = valid_datagen.flow_from_directory(
-validation_data_dir,
-target_size = (sz, sz),
-batch_size = 1,
-class_mode = "categorical",
-shuffle = False,
-interpolation = 'nearest')
-
-HP_SDSS_test_generator = test_datagen.flow_from_directory(
-HP_SDSS_test_data_dir,
-target_size = (sz, sz),
-batch_size = 1,
-class_mode = None,
-shuffle = False)
-
-HP_DES_test_generator = test_datagen.flow_from_directory(
-HP_DES_test_data_dir,
-target_size = (sz, sz),
-batch_size = 1,
-class_mode = None,
-shuffle = False)
-
-
-FO_SDSS_test_generator = test_datagen.flow_from_directory(
-FO_SDSS_test_data_dir,
-target_size = (sz, sz),
-batch_size = 1,
-class_mode = None,
-shuffle = False)
-
-FO_DES_test_generator = test_datagen.flow_from_directory(
-FO_DES_test_data_dir,
-target_size = (sz, sz),
-batch_size = 1,
-class_mode = None,
-shuffle = False)
+    validation_generator = valid_datagen.flow_from_directory(
+        validation_data_dir, 
+        target_size = (sz, sz),
+        batch_size = 1,
+        class_mode = "categorical",
+        shuffle = False,
+        interpolation = 'nearest')
 
 
 # # 3. Define Model 
@@ -262,102 +248,6 @@ model_final.compile(loss = "categorical_crossentropy", optimizer = opt, metrics=
 # # 4. Train
 
 # ## 1. Training Data 
-
-# In[74]:
-
-#files_s = os.listdir(PATH+'deeplearning/data/train/spiral')[:20]
-#for i in range(6):
-#    plt.subplot(2,3,i+1)
-#    plt.axis('Off')
-#    plt.subplots_adjust(wspace=0.1,hspace=0.05)
-#    plt.suptitle('SDSS spirals', fontsize=16)
-#    img = plt.imread(PATH+'deeplearning/data/train/spiral/'+files_s[i])
-#    plt.imshow(img)
-    
-#plt.savefig(PATH+'paper/pictures/SDSS_spirals.pdf', bbox_inches='tight')
-
-
-# In[64]:
-
-#files_e = os.listdir(PATH+'deeplearning/data/train/elliptical')[:20]
-#for i in range(6):
-#    plt.subplot(2,3,i+1)
-#    plt.axis('Off')
-#    plt.subplots_adjust(wspace=0.1,hspace=0.05)
-#    plt.suptitle('SDSS ellipticals', fontsize=16)
-#    img = plt.imread(PATH+'deeplearning/data/train/elliptical/'+files_e[i+12])
-#    plt.imshow(img)
-    
-#plt.savefig(PATH+'paper/pictures/SDSS_elliptical.pdf', bbox_inches='tight')
-
-
-# In[75]:
-
-# ## 2. Data Augmentation 
-
-# In[76]:
-
-# Creat a datagen similar to train_datagen [except for rescaling, in order to visualize]
-
-#datagen = ImageDataGenerator(
-#    #rescale = 1./255,
-#    horizontal_flip = True,
-#    vertical_flip = True,
-#    fill_mode = "nearest",
-#    zoom_range = 0.3,
-#    width_shift_range = 0.3,
-#    height_shift_range=0.3,
-#    rotation_range=45)
-
-
-# In[77]:
-
-# Original Picture
-
-#files_s = os.listdir(PATH+'deeplearning/data/train/spiral')[:20]
-#x = plt.imread(PATH+'deeplearning/data/train/spiral/'+files_s[5])
-
-#plt.figure( figsize=(3,2) )
-#plt.axis('Off')
-#plt.title('Original')
-#plt.imshow(x)
-
-#plt.savefig(PATH + 'paper/pictures/Augmentations_a.pdf')
-
-
-# In[32]:
-
-# Augmentations
-
-#x = x.reshape((1,) + x.shape)
-#i = 0
-
-#for batch in datagen.flow(x, batch_size=1):
-#    i += 1
-#    plt.subplot(3,4,i)
-#    plt.axis('Off')
-#    plt.suptitle('Augmentations')
-#    plt.imshow(batch[0])
-#
-#    if i > 11:
-#        break  # otherwise the generator would loop indefinitely
-#        
-#plt.savefig(PATH + 'paper/pictures/Augmentations_b.pdf')
-
-
-# ## 3. Learning 
-
-# In[78]:
-
-#K.clear_session()
-
-
-# In[86]:
-
-#os.environ["CUDA_VISIBLE_DEVICES"]='0'
-
-
-# In[80]:
 t0 = time()
 if (args.horovod):
     callbacks = [hvd.callbacks.BroadcastGlobalVariablesCallback(0), 
@@ -495,28 +385,8 @@ if (hvd.rank()==0):
     print('**Evaluation time: %s' %(t2-t1))
     print("Saving model")
     model_final.save(PATH + 'deeplearning/weights/%s_Final.h5'%args.model)
-# In[28]:
 
-#Training Accuracy/Loss
-
-#plt.figure( figsize=(11,4) )
-
-# Plot training & validation accuracy values
-#plt.subplot(1,2,1)
-#plt.plot(history3.history['acc'])
-#plt.plot(history3.history['val_acc'])
-#plt.title('Model accuracy')
-#plt.ylabel('Accuracy')
-#plt.xlabel('Epoch')
-#plt.legend(['Train', 'Test'], loc='upper left')
-#plt.show()
-
-# Plot training & validation loss values
-#plt.subplot(1,2,2)
-#plt.plot(history3.history['loss'])
-#plt.plot(history3.history['val_loss'])
-#plt.title('Model loss')
-#plt.ylabel('Loss')
-#plt.xlabel('Epoch')
-#plt.legend(['Train', 'Test'], loc='upper left')
-#plt.show()
+t_end = time()
+if (hvd.rank()==0):
+    print("-----------------------------")
+    print("** Total Wall Time: %s seconds" %(t_end - t_start))
