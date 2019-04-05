@@ -134,7 +134,7 @@ else:
 if args.hdf5:
     from hdf5_preprocessing import *
     train_datagen = HDF5ImageGenerator(
-#    rescale = 1./255,
+#    rescale = 1./255,  # The scaling has already been taken care of in the hdf5 files.
     horizontal_flip = True,
     vertical_flip = True,
     fill_mode = "nearest",
@@ -142,20 +142,22 @@ if args.hdf5:
     width_shift_range = 0.3,
     height_shift_range=0.3,
     rotation_range=45)
-    valid_datagen = HDF5ImageGenerator()
+    valid_datagen = HDF5ImageGenerator()# The scaling has already be taken care of in the hdf5 
     train_fh = h5py.File(PATH+'/deeplearning/data/train_save.hdf5', 'r')
+    #calculating the offset for different ranks    
     ntrain = train_fh['data'].shape[0]
     ntrain_loc = ntrain//hvd.size()
     train_offset = ntrain_loc*hvd.rank()
     train_generator = train_datagen.flow_from_hdf5(
         train_fh, 
-#        target_size = (sz, sz),
+#        target_size = (sz, sz),# I already did the interpolation in HDF5
         batch_size = batch_size, 
-#        class_mode = "categorical",
+#        class_mode = "categorical", # this is not needed any more.
         shuffle = True,
 #        interpolation = 'nearest',
         offset=train_offset, nsample=ntrain_loc)
     valid_fh = h5py.File(PATH+'/deeplearning/data/valid_save.hdf5', 'r')
+    #calculating the offset for different ranks
     nvalid = valid_fh['data'].shape[0]
     nvalid_loc = nvalid//hvd.size()
     valid_offset = nvalid_loc*hvd.rank()
