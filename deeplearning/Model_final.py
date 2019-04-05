@@ -1,10 +1,8 @@
 #!/usr/bin/env python
-
+from __future__ import print_function
 # # 1. Import Libraries 
 from time import time
 t_start= time()
-# In[65]:
-from __future__ import print_function
 import sys
 ### command line parsers
 import argparse
