@@ -65,10 +65,10 @@ gen = HDF5ImageGenerator(horizontal_flip = True,
                          fill_mode = "nearest",
                          zoom_range = 0.3,
                          width_shift_range = 0.3,
-                         height_shift_range=0.3,
+                         height_shift_range = 0.3,
                          rotation_range=45)
 fh = h5py.File('/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/deeplearning/data/train_save.hdf5', 'r')
-df = gen.flow_from_hdf5(fh, shuffle=True)
+df = gen.flow_from_hdf5(fh, batch_size=batch_size, shuffle=True)
 print("Testing flow from HDF5 performance")
 t3 = time()
 print(df.n)

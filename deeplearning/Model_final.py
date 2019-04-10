@@ -28,6 +28,7 @@ parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch fo
 parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
 parser.add_argument('--hdf5', action='store_true', help='Train from hdf5 file or not')
 parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
+parser.add_argument('--save_model', default='Model_Final.h5', help='Whether to split data or not')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -226,7 +227,10 @@ else:
     print("I don't know the model %s" %args.model)
 
 x = base_model.output
-x = GlobalAveragePooling2D()(x)
+if (args.model=="VGG16" or args.model=='VGG19'):
+    x = Flatten()(x)
+else:
+    x = GlobalAveragePooling2D()(x)
 x = Dense(1024, activation='relu')(x)
 x = Dropout(0.7)(x)
 x = Dense(1024, activation="relu", name='second_last_layer')(x)
@@ -385,6 +389,7 @@ if (hvd.rank()==0):
     print('**Evaluation time: %s' %(t2-t1))
     print("Saving model")
     model_final.save(PATH + 'deeplearning/weights/%s_Final.h5'%args.model)
+    model_final.save(PATH + 'deeplearning/weights/%s'%args.save_model)
 
 t_end = time()
 if (hvd.rank()==0):
