@@ -27,6 +27,7 @@ parser.add_argument('--epochs_1', type=int, default=1, help='Number of epoch for
 parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch for the second stage')
 parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
 parser.add_argument('--hdf5', action='store_true', help='Train from hdf5 file or not')
+parser.add_argument('--use_flow', action='store_true', help='use flow method')
 parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
 args = parser.parse_args()
 num_workers=args.num_workers
@@ -146,28 +147,41 @@ if args.hdf5:
     ntrain = train_fh['data'].shape[0]
     ntrain_loc = ntrain//hvd.size()
     train_offset = ntrain_loc*hvd.rank()
-    train_generator = train_datagen.flow_from_hdf5(
-        train_fh, 
-#        target_size = (sz, sz),# I already did the interpolation in HDF5
-        batch_size = batch_size, 
-#        class_mode = "categorical", # this is not needed any more.
-        shuffle = True,
-#        interpolation = 'nearest',
-        offset=train_offset, nsample=ntrain_loc)
+    if args.use_flow:
+        train_datagen.fit(train_fh['data'])
+        train_generator = train_datagen.flow(train_fh['data'][train_offset:train_offset+ntrain_loc],
+                                             train_fh['labels'][train_offset:train_offset+ntrain_loc],
+                                             batch_size = batch_size,
+                                             shuffle = True)
+    else:
+        train_generator = train_datagen.flow_from_hdf5(
+            train_fh, 
+            #        target_size = (sz, sz),# I already did the interpolation in HDF5
+            batch_size = batch_size, 
+            #        class_mode = "categorical", # this is not needed any more.
+            shuffle = True,
+            #        interpolation = 'nearest',
+            offset=train_offset, nsample=ntrain_loc)
     valid_fh = h5py.File(PATH+'/deeplearning/data/valid_save.hdf5', 'r')
     #calculating the offset for different ranks
     nvalid = valid_fh['data'].shape[0]
     nvalid_loc = nvalid//hvd.size()
     valid_offset = nvalid_loc*hvd.rank()
-
-    validation_generator = valid_datagen.flow_from_hdf5(
-        valid_fh,
-#        target_size = (sz, sz),
-        batch_size = 1,
-#        class_mode = "categorical",
-        shuffle = False,
-#        interpolation = 'nearest',
-        offset=valid_offset, nsample=nvalid_loc)
+    if args.use_flow:
+        train_datagen.fit(train_fh['data'])
+        validation_generator = valid_datagen.flow(valid_fh['data'][valid_offset:valid_offset+nvalid_loc],
+                                                  valid_fh['labels'][valid_offset:valid_offset+nvalid_loc],
+                                                  batch_size = 1,
+                                                  shuffle=True)
+    else:
+        validation_generator = valid_datagen.flow_from_hdf5(
+            valid_fh,
+            #        target_size = (sz, sz),
+            batch_size = 1,
+            #        class_mode = "categorical",
+            shuffle = False,
+            #        interpolation = 'nearest',
+            offset=valid_offset, nsample=nvalid_loc)
 else:
     train_datagen = ImageDataGenerator(
         rescale = 1./255,
