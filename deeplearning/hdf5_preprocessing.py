@@ -17,7 +17,7 @@ def hdf5_from_directory(fname, directory, datagen,
                         batch_size=32,
                         data_format='channels_last',
                         interpolation='nearest',
-                        dtype='float32', nsample=None, verbose=1, mpi=False):
+                        dtype=None, nsample=None, verbose=1, mpi=False, chunks=False):
     if (verbose!=0):
         print('-----------------------------------')
         print("Creating HDF5 from %s: " %directory)
@@ -47,11 +47,17 @@ def hdf5_from_directory(fname, directory, datagen,
     #    f.create_dataset('filenames', shape=(dataflow.n, 1), dtype='S32')
     x_shape = (nsample, ) + x.shape[1:]
     y_shape = (nsample, ) + y.shape[1:]
-    ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=True)
+    if chunks:
+        ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=chunks)
+    else:
+        ds = f.create_dataset('data', shape=x_shape, dtype=dtype)
     ds.attrs['data_format'] = data_format
     ds.attrs['shape'] = x_shape
     ds.attrs['image_shape'] = target_size
-    ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8, chunks=True)
+    if chunks:
+        ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8, chunks=True)
+    else:
+        ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8)
     ys.attrs['shape'] = y_shape
     nb_global = nsample//batch_size
     nb_local = nb_global//size
@@ -84,7 +90,7 @@ class HDF5ArrayIterator(Iterator):
                  save_prefix='',
                  save_format='png',
                  subset=None,
-                 dtype='float32',
+                 dtype=float,
                  offset=0,
                  nsample=None,
                  class_mode='categorical',
@@ -174,7 +180,7 @@ class HDF5ImageGenerator(ImageDataGenerator):
 	         data_format='channels_last',
 	         validation_split=0.0,
 #	         interpolation_order=1,
-	         dtype='float32'):
+	         dtype=None):
         super().__init__(featurewise_center=featurewise_center,
 		         samplewise_center=samplewise_center,
 		         featurewise_std_normalization=featurewise_std_normalization,
@@ -206,7 +212,7 @@ class HDF5ImageGenerator(ImageDataGenerator):
                        save_prefix='',
                        save_format='png',
                        subset=None,
-                       dtype='float32', offset=0, nsample=None):
+                       dtype=None, offset=0, nsample=None):
         return HDF5ArrayIterator(fh, self,
                                  batch_size=batch_size,
                                  shuffle=shuffle,
