@@ -112,26 +112,28 @@ class HDF5ArrayIterator(Iterator):
                          batch_size,
                          shuffle,
                          seed)
+
+        x_shape = (self.n,)+self.x_shape[1:]
+        y_shape = (self.n,)+self.y_shape[1:]
+        self.batch_x = np.zeros(x_shape, dtype=self.dtype)
+        self.batch_y = np.zeros(y_shape, dtype=np.uint8)
+
     def _set_index_array(self):
         ''' Overwrite the _set_index_array_ in array generator to make it to use multiple rank'''
-        self.index_array = np.arange(self.offset, self.offset + self.n)
+        self.index_array = np.arange(self.offset, self.offset + self.n, dtype=int)
         if self.shuffle:
             np.random.shuffle(self.index_array)
     
     def _get_batches_of_transformed_samples(self, index_array):
-        x_shape = (len(index_array),)+self.x_shape[1:]
-        y_shape = (len(index_array),)+self.y_shape[1:]
-        batch_x = np.zeros((len(index_array),)+self.x_shape[1:], dtype=self.dtype)
-        batch_y = np.zeros((len(index_array),)+self.y_shape[1:], dtype=np.uint8)
         for i, j in enumerate(index_array):
-            x = self.hdf5['data'][j]
-            y = self.hdf5['labels'][j]
+            self.batch_x[i] = self.hdf5['data'][j]
+            self.batch_y[i] = self.hdf5['labels'][j]
             if self.image_data_generator:
-                params = self.image_data_generator.get_random_transform(x.shape)
-                x = self.image_data_generator.apply_transform(x, params)
-                x = self.image_data_generator.standardize(x)
-            batch_x[i] = x
-            batch_y[i] = y
+                params = self.image_data_generator.get_random_transform(self.batch_x[i].shape)
+                x = self.image_data_generator.apply_transform(self.batch_x[i], params)
+                x = self.image_data_generator.standardize(self.batch_x[i])
+            self.batch_x[i] = x
+#            self.batch_y[i] = y
 
         if self.save_to_dir:
             for i, j in enumerate(index_array):
@@ -144,9 +146,9 @@ class HDF5ArrayIterator(Iterator):
                 img.save(os.path.join(self.save_to_dir, fname))
 
         if self.sample_weight is None:
-            return batch_x, batch_y
+            return self.batch_x, self.batch_y
         else:
-            return batch_x, batch_y, self.sample_weight[index_array]
+            return self.batch_x, self.batch_y, self.sample_weight[index_array]
 
 class HDF5ImageGenerator(ImageDataGenerator):
     def __init__(self,

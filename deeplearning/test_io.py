@@ -50,14 +50,13 @@ t0 = time()
 it = range(nbatch)
 if rank==0:
     it = tqdm(it)
-
 for i in it:
     next(train_generator)
 t1 = time()
 dtinv = 1./(t1 - t0)
 dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
 if comm.rank==0:
-    print("Throughput(flow_from_directory): %s images per second" %(nbatch*batch_size*dtinv_avg))
+    print("\nThroughput(flow_from_directory): %s images per second" %(nbatch*batch_size*dtinv_avg))
 
 ### Flow method
 gen = HDF5ImageGenerator(horizontal_flip = True,
@@ -73,43 +72,58 @@ fh = h5py.File(PATH+'/deeplearning/data/train_save.hdf5', 'r')
 gen.fit(fh['data'][rank:rank+1])
 
 t3 = time()
-
 nsample = fh['data'].shape[0] // size
 offset = nsample*rank
 flow = gen.flow(fh['data'][offset:offset+nsample],  # X
                 fh['labels'][offset:offset+nsample],  # Y
                 batch_size=batch_size, 
                 shuffle = shuffle,)
+it = range(nbatch)
+if rank==0:
+    it = tqdm(it)
+
 for i in it:
     x, y = next(flow)
+
+t4 = time()
+dtinv = 1./(t4 - t3)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+if comm.rank==0:
+    print("\nThroughput(flow_from_directory): %s imgs/s --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
+
+df = gen.flow_from_hdf5(fh, shuffle=shuffle, batch_size=batch_size, nsample=nsample, offset=offset)
+if rank==0:
+    print("Testing flow from HDF5 performance")
+t3 = time()
+
+it = range(nbatch)
+if rank==0:
+    it = tqdm(it)
+
+for i in it:
+    x, y = next(df)
+t4 = time()
+dtinv = 1./(t4 - t3)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+if comm.rank==0:
+    print("\nThroughput(flow_from_hdf5): %s imgs/s    --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
 fh.close()
-t4 = time()
-dtinv = 1./(t4 - t3)
-dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
-if comm.rank==0:
-    print("Throughput(flow): %s images per second" %(nbatch*batch_size*dtinv_avg))
+try:
+    fh = h5py.File('/scratch/train_save.hdf5', 'r')
+    gen.fit(fh['data'][rank:rank+1])
 
-fh = h5py.File('/scratch/train_save.hdf5', 'r')
-gen.fit(fh['data'][rank:rank+1])
-
-flow = gen.flow(fh['data'][offset:offset+nsample],  # X
-                fh['labels'][offset:offset+nsample],  # Y
-                batch_size=batch_size, 
-                shuffle = shuffle,)
-t3=time()
-for i in it:
-    x, y = next(flow)
-t4 = time()
-dtinv = 1./(t4 - t3)
-dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
-if comm.rank==0:
-    print("Throughput(flow, SSD): %s images per second" %(nbatch*batch_size*dtinv_avg))
-
-#df = gen.flow_from_hdf5(fh, shuffle=True, batch_size=batch_size, nsample=nbatch*batch_size)
-#print("Testing flow from HDF5 performance")
-#t3 = time()
-#print(df.n)
-#for i in tqdm(range(nbatch)):
-#    x, y = next(df)
-#t4 = time()
-#print("Throughput(flow_from_hdf5): %s images per second" %(nbatch*batch_size/(t4-t3)))
+    flow = gen.flow(fh['data'][offset:offset+nsample],  # X
+                    fh['labels'][offset:offset+nsample],  # Y
+                    batch_size=batch_size, 
+                    shuffle = shuffle,)
+    t3=time()
+    for i in it:
+        x, y = next(flow)
+    t4 = time()
+    dtinv = 1./(t4 - t3)
+    dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+    if comm.rank==0:
+        print("\nThroughput(flow, SSD): %s imgs/s  --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
+except:
+    if comm.rank==0:
+        print("I could not do SSD test for some reason")
