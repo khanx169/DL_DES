@@ -143,7 +143,7 @@ if args.hdf5:
     height_shift_range=0.3,
     rotation_range=45)
     valid_datagen = HDF5ImageGenerator()# The scaling has already be taken care of in the hdf5 
-    train_fh = h5py.File(PATH+'/deeplearning/data/train_save.hdf5', 'r')
+    train_fh = h5py.File(PATH+'/deeplearning/data/train_nochunk.hdf5', 'r')
     #calculating the offset for different ranks    
     ntrain = train_fh['data'].shape[0]
     ntrain_loc = ntrain//hvd.size()
@@ -163,7 +163,7 @@ if args.hdf5:
             shuffle = True,
             #        interpolation = 'nearest',
             offset=train_offset, nsample=ntrain_loc)
-    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_save.hdf5', 'r')
+    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_nochunk.hdf5', 'r')
     #calculating the offset for different ranks
     nvalid = valid_fh['data'].shape[0]
     nvalid_loc = nvalid//hvd.size()
