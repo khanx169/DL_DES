@@ -112,7 +112,7 @@ fh.close()
 
 X=np.zeros((nsample, sz, sz, 3))
 Y=np.zeros((nsample,)+ fh['labels'].shape[1:])
-gen.fit(fh['data'][rank:rank+1])
+gen.fit(X)
 
 flow = gen.flow(X, Y,  # Y
                 batch_size=batch_size, 
