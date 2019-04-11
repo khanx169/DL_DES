@@ -27,7 +27,7 @@ shuffle=args.shuffle
 if comm.rank==0:
     print("h5py version: %s" %h5py.__version__)
     print("Testing flow from directory performance")
-PATH='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/'
+
 train_datagen = ImageDataGenerator(
     rescale = 1./255,
     horizontal_flip = True,

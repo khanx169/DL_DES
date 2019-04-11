@@ -87,10 +87,25 @@ dtinv = 1./(t4 - t3)
 dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)
 if comm.rank==0:
     print("*Throughput(flow_from_hdf5): %s imgs/s    --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
-
+X=np.zeros((nsample, sz, sz, 3))
+Y=np.zeros((nsample,)+ fh['labels'].shape[1:])
+gen.fit(X[0:1])
+flow = gen.flow(X, Y,  # Y
+                batch_size=batch_size, 
+                shuffle = shuffle,)
+it = range(nbatch)
+if rank==0:
+    it = tqdm(it)
+t3 = time()
+for i in it:
+    x, y = next(flow)
+t4 = time()
+dtinv = 1./(t4 - t3)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)
+if comm.rank==0:
+    print("*Throughput(flow_from_mem): %s imgs/s --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
 
 gen.fit(fh['data'][rank:rank+1])
-
 
 flow = gen.flow(fh['data'][offset:offset+nsample],  # X
                 fh['labels'][offset:offset+nsample],  # Y
@@ -110,24 +125,6 @@ if comm.rank==0:
 fh.close()
 
 
-X=np.zeros((nsample, sz, sz, 3))
-Y=np.zeros((nsample,)+ fh['labels'].shape[1:])
-gen.fit(X)
-
-flow = gen.flow(X, Y,  # Y
-                batch_size=batch_size, 
-                shuffle = shuffle,)
-it = range(nbatch)
-if rank==0:
-    it = tqdm(it)
-t3 = time()
-for i in it:
-    x, y = next(flow)
-t4 = time()
-dtinv = 1./(t4 - t3)
-dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)
-if comm.rank==0:
-    print("*Throughput(flow_from_mem): %s imgs/s --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
 
 try:
     fh = h5py.File('/scratch/train_nochunk.hdf5', 'r')
