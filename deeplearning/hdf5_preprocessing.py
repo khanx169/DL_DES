@@ -119,8 +119,8 @@ class HDF5ArrayIterator(Iterator):
                          shuffle,
                          seed)
 
-        x_shape = (self.n,)+self.x_shape[1:]
-        y_shape = (self.n,)+self.y_shape[1:]
+        x_shape = (batch_size,)+self.x_shape[1:]
+        y_shape = (batch_size,)+self.y_shape[1:]
         self.batch_x = np.zeros(x_shape, dtype=self.dtype)
         self.batch_y = np.zeros(y_shape, dtype=np.uint8)
 
