@@ -149,7 +149,7 @@ if args.hdf5:
     ntrain_loc = ntrain//hvd.size()
     train_offset = ntrain_loc*hvd.rank()
     if args.use_flow:
-        train_datagen.fit(train_fh['data'])
+        train_datagen.fit(train_fh['data'][train_offset:train_offset+1])
         train_generator = train_datagen.flow(train_fh['data'][train_offset:train_offset+ntrain_loc],
                                              train_fh['labels'][train_offset:train_offset+ntrain_loc],
                                              batch_size = batch_size,
@@ -169,7 +169,7 @@ if args.hdf5:
     nvalid_loc = nvalid//hvd.size()
     valid_offset = nvalid_loc*hvd.rank()
     if args.use_flow:
-        train_datagen.fit(train_fh['data'])
+        valid_datagen.fit(valid_fh['data'][valid_offset:valid_offset+1])
         validation_generator = valid_datagen.flow(valid_fh['data'][valid_offset:valid_offset+nvalid_loc],
                                                   valid_fh['labels'][valid_offset:valid_offset+nvalid_loc],
                                                   batch_size = 1,

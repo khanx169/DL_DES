@@ -1,19 +1,35 @@
+#!/usr/bin/env python
+# Testing I/O throughput 
 import numpy as np
 import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 from hdf5_preprocessing import *
 import h5py
-print(h5py.__version__)
 from tqdm import tqdm
 from time import time
-
 from mpi4py import MPI
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--num_batches", default=20, type=int, help='Number of batches to read')
+parser.add_argument("--batch_size", default=16, type=int, help='Batch size')
+parser.add_argument("--shuffle", action='store_true')
+parser.add_argument("--PATH", default='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/')
+
+args = parser.parse_args()
+
 comm = MPI.COMM_WORLD
-print(comm.size, comm.rank)
+print("MPI: %s of %s" %(comm.size, comm.rank))
 sz = 224
-nbatch=20
-batch_size=16
-print("Testing flow from directory performance")
+PATH=args.PATH
+nbatch=args.num_batches
+batch_size=args.batch_size
+shuffle=args.shuffle
+rank = comm.rank
+size = comm.size
+# Flow from directory method
+if comm.rank==0:
+    print("h5py version: %s" %h5py.__version__)
+    print("Testing flow from directory performance")
 
 train_datagen = ImageDataGenerator(
     rescale = 1./255,
@@ -24,42 +40,26 @@ train_datagen = ImageDataGenerator(
     width_shift_range = 0.3,
     height_shift_range=0.3,
     rotation_range=45)
-train_generator = train_datagen.flow_from_directory(
-    "../deeplearning/data/train",
+train_generator = train_datagen.flow_from_directory(PATH+"/deeplearning/data/train",
     target_size = (sz, sz),
     batch_size = batch_size,
     class_mode = "categorical",
-    shuffle = True,
+    shuffle = shuffle,
     interpolation = 'nearest')
 t0 = time()
-for i in tqdm(range(nbatch)):
+it = range(nbatch)
+if rank==0:
+    it = tqdm(it)
+
+for i in it:
     next(train_generator)
 t1 = time()
-print("Throughput(flow_from_directory): %s images per second" %(nbatch*batch_size/(t1-t0)))
+dtinv = 1./(t1 - t0)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+if comm.rank==0:
+    print("Throughput(flow_from_directory): %s images per second" %(nbatch*batch_size*dtinv_avg))
 
-'''
-t0 = time()
-print("Creating HDF5 file for train data: ")
-datagen = ImageDataGenerator(rescale = 1./255)    
-hdf5_from_directory("./data/train.hdf5",
-                    './data/train', datagen,
-                    target_size=(sz, sz),
-                    batch_size=batch_size,
-                    class_mode="categorical",
-                    interpolation='nearest', mpi=False)
-t1 = time()
-print(" time: %s second" %(t1-t0))
-
-print("Creating HDF5 file for validation data: ")
-hdf5_from_directory("./data/valid.hdf5",
-                    './data/valid', datagen,
-                    target_size=(sz, sz),
-                    batch_size=1,
-                    class_mode="categorical",
-                    interpolation='nearest', mpi=False)
-t2 = time()
-print(" time: %s second" %(t2-t1))
-'''
+### Flow method
 gen = HDF5ImageGenerator(horizontal_flip = True,
                          vertical_flip = True,
                          fill_mode = "nearest",
@@ -67,21 +67,49 @@ gen = HDF5ImageGenerator(horizontal_flip = True,
                          width_shift_range = 0.3,
                          height_shift_range = 0.3,
                          rotation_range=45)
-fh = h5py.File('../deeplearning/data/train_save.hdf5', 'r')
-df = gen.flow_from_hdf5(fh, shuffle=True)
-print("Testing flow from HDF5 performance")
-t3 = time()
-print(df.n)
-for i in tqdm(range(nbatch)):
-    x, y = next(df)
-t4 = time()
-print("Throughput(flow_from_hdf5): %s images per second" %(nbatch*batch_size/(t4-t3)))
-gen.fit(fh['data'])
-flow = gen.flow(fh['data'][0:30], fh['labels'][0:30], batch_size=batch_size)
+
+fh = h5py.File(PATH+'/deeplearning/data/train_save.hdf5', 'r')
+
+gen.fit(fh['data'][rank:rank+1])
 
 t3 = time()
-print(flow.n)
-for i in tqdm(range(nbatch)):
+
+nsample = fh['data'].shape[0] // size
+offset = nsample*rank
+flow = gen.flow(fh['data'][offset:offset+nsample],  # X
+                fh['labels'][offset:offset+nsample],  # Y
+                batch_size=batch_size, 
+                shuffle = shuffle,)
+for i in it:
+    x, y = next(flow)
+fh.close()
+t4 = time()
+dtinv = 1./(t4 - t3)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+if comm.rank==0:
+    print("Throughput(flow): %s images per second" %(nbatch*batch_size*dtinv_avg))
+
+fh = h5py.File('/scratch/train_save.hdf5', 'r')
+gen.fit(fh['data'][rank:rank+1])
+
+flow = gen.flow(fh['data'][offset:offset+nsample],  # X
+                fh['labels'][offset:offset+nsample],  # Y
+                batch_size=batch_size, 
+                shuffle = shuffle,)
+t3=time()
+for i in it:
     x, y = next(flow)
 t4 = time()
-print("Throughput(flow): %s images per second" %(nbatch*batch_size/(t4-t3)))
+dtinv = 1./(t4 - t3)
+dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)/size
+if comm.rank==0:
+    print("Throughput(flow, SSD): %s images per second" %(nbatch*batch_size*dtinv_avg))
+
+#df = gen.flow_from_hdf5(fh, shuffle=True, batch_size=batch_size, nsample=nbatch*batch_size)
+#print("Testing flow from HDF5 performance")
+#t3 = time()
+#print(df.n)
+#for i in tqdm(range(nbatch)):
+#    x, y = next(df)
+#t4 = time()
+#print("Throughput(flow_from_hdf5): %s images per second" %(nbatch*batch_size/(t4-t3)))
