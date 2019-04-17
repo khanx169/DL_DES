@@ -30,6 +30,7 @@ parser.add_argument('--hdf5', action='store_true', help='Train from hdf5 file or
 parser.add_argument('--use_flow', action='store_true', help='use flow method')
 parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
 parser.add_argument('--save_model', default='Model_Final.h5', help='Whether to split data or not')
+parser.add_argument('--data_format', default='channels_last', help='dataformat: channels_first or channels_last')
 args = parser.parse_args()
 num_workers=args.num_workers
 PATH = args.PATH
@@ -61,6 +62,12 @@ import tensorflow as tf
 import seaborn as sn
 import pandas as pd 
 import numpy as np
+K.set_image_data_format(args.data_format)
+if args.data_format=='channels_last':
+    input_shape=(sz, sz, 3)
+else:
+    input_shape=(3, sz, sz)
+
 
 
 #### Check whether using Horovod or not. If yes, initialize hvd.
@@ -84,6 +91,7 @@ if hvd.rank()==0:
     for arg in vars(args):
         print("* %s: %s"%(arg, getattr(args, arg)))
     print("* Tensorflow version: %s"%tf.__version__)
+    print(K.image_data_format())
     print("*************************************************")
 #### Setup session
 if device=='gpu':
@@ -113,7 +121,7 @@ else:
 
 # In[71]:
 step_rescale=hvd.size()
-if args.splitdata and args.horovod and hvd.size()>1:
+if args.splitdata and args.horovod and hvd.size()>1 and (not args.hdf5):
     sys.path.append(PATH+"/deeplearning/")
     from splitdata import *
     if (hvd.rank()==0):
@@ -133,21 +141,27 @@ else:
 
 if args.hdf5:
     from hdf5_preprocessing import *
+    step_rescale=1
+    train_fh = h5py.File(PATH+'/deeplearning/data/train_%s.hdf5'%args.data_format, 'r')
+#    train_fh = h5py.File(PATH+'/deeplearning/data/train_nochunk.hdf5', 'r')
     train_datagen = HDF5ImageGenerator(
-#    rescale = 1./255,  # The scaling has already been taken care of in the hdf5 files.
-    horizontal_flip = True,
-    vertical_flip = True,
-    fill_mode = "nearest",
-    zoom_range = 0.3,
-    width_shift_range = 0.3,
-    height_shift_range=0.3,
-    rotation_range=45)
-    valid_datagen = HDF5ImageGenerator()# The scaling has already be taken care of in the hdf5 
-    train_fh = h5py.File(PATH+'/deeplearning/data/train_nochunk.hdf5', 'r')
+        #    rescale = 1./255,  # The scaling has already been taken care of in the hdf5 files.
+        horizontal_flip = True,
+        vertical_flip = True,
+        fill_mode = "nearest",
+        zoom_range = 0.3,
+        width_shift_range = 0.3,
+        height_shift_range=0.3,
+        rotation_range=45, 
+        data_format=args.data_format)
+    valid_datagen = HDF5ImageGenerator(data_format=args.data_format)# The scaling has already be taken care of in the hdf5 
+
     #calculating the offset for different ranks    
     ntrain = train_fh['data'].shape[0]
+
     ntrain_loc = ntrain//hvd.size()
     train_offset = ntrain_loc*hvd.rank()
+    print(ntrain, ntrain_loc)
     if args.use_flow:
         train_datagen.fit(train_fh['data'][train_offset:train_offset+1])
         train_generator = train_datagen.flow(train_fh['data'][train_offset:train_offset+ntrain_loc],
@@ -163,7 +177,8 @@ if args.hdf5:
             shuffle = True,
             #        interpolation = 'nearest',
             offset=train_offset, nsample=ntrain_loc)
-    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_nochunk.hdf5', 'r')
+    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_%s.hdf5'%args.data_format, 'r')
+#    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_nochunk.hdf5', 'r')
     #calculating the offset for different ranks
     nvalid = valid_fh['data'].shape[0]
     nvalid_loc = nvalid//hvd.size()
@@ -192,9 +207,9 @@ else:
         zoom_range = 0.3,
         width_shift_range = 0.3,
         height_shift_range=0.3,
-        rotation_range=45)
+        rotation_range=45, data_format=args.data_format)
     
-    valid_datagen = ImageDataGenerator(rescale = 1./255)
+    valid_datagen = ImageDataGenerator(rescale = 1./255, data_format=args.data_format)
     
     test_datagen = ImageDataGenerator(
         rescale = 1./255,
@@ -204,7 +219,7 @@ else:
         zoom_range = 0.3,
         width_shift_range = 0.3,
         height_shift_range=0.3,
-        rotation_range=45)
+        rotation_range=45, data_format=args.data_format)
     train_generator = train_datagen.flow_from_directory(
         train_data_dir,
         target_size = (sz, sz),
@@ -228,15 +243,15 @@ else:
 
 num_of_classes = 2
 if args.model == 'InceptionV3':
-    base_model = InceptionV3(input_shape=(sz,sz,3), weights='imagenet', include_top=False)
+    base_model = InceptionV3(input_shape=input_shape, weights='imagenet', include_top=False)
 elif args.model =='Xception':
-    base_model = Xception(input_shape=(sz,sz,3), weights='imagenet', include_top=False)
+    base_model = Xception(input_shape=input_shape, weights='imagenet', include_top=False)
 elif args.model == 'ResNet50':
-    base_model = ResNet50(input_shape=(sz,sz,3), weights='imagenet', include_top=False)
+    base_model = ResNet50(input_shape=input_shape, weights='imagenet', include_top=False)
 elif args.model=='VGG16':
-    base_model = VGG16(input_shape=(sz,sz,3), weights='imagenet', include_top=False)
+    base_model = VGG16(input_shape=input_shape, weights='imagenet', include_top=False)
 elif args.model=='VGG19':
-    base_model = VGG19(input_shape=(sz,sz,3), weights='imagenet', include_top=False)
+    base_model = VGG19(input_shape=input_shape, weights='imagenet', include_top=False)
 else:
     print("I don't know the model %s" %args.model)
 

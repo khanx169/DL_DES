@@ -4,6 +4,7 @@ import numpy as np
 import keras
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 from hdf5_preprocessing import *
+from keras import backend as K
 import h5py
 from tqdm import tqdm
 from time import time
@@ -14,9 +15,19 @@ parser.add_argument("--num_batches", default=20, type=int, help='Number of batch
 parser.add_argument("--batch_size", default=16, type=int, help='Batch size')
 parser.add_argument("--shuffle", action='store_true')
 parser.add_argument("--PATH", default='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/')
-parser.add_argument("--hdf5_file", default='train_nochunk.hdf5')
-
+parser.add_argument("--hdf5_file", default='train_channels_first.hdf5')
 args = parser.parse_args()
+fh = h5py.File(args.PATH+'/deeplearning/data/'+args.hdf5_file, 'r')
+data_format=fh['data'].attrs['data_format']
+print(data_format)
+print(fh['data'].shape)
+K.set_image_data_format(data_format)
+if data_format=='channels_last':
+    K.set_image_dim_ordering('tf')
+else:
+    K.set_image_dim_ordering('th')
+
+
 
 comm = MPI.COMM_WORLD
 print("MPI: %s of %s" %(comm.size, comm.rank))
@@ -40,12 +51,13 @@ train_datagen = ImageDataGenerator(
     zoom_range = 0.3,
     width_shift_range = 0.3,
     height_shift_range=0.3,
+    data_format=data_format,
     rotation_range=45)
 train_generator = train_datagen.flow_from_directory(PATH+"/deeplearning/data/train",
     target_size = (sz, sz),
     batch_size = batch_size,
     class_mode = "categorical",
-    shuffle = shuffle,
+    shuffle = shuffle, 
     interpolation = 'nearest')
 t0 = time()
 it = range(nbatch)
@@ -65,9 +77,9 @@ gen = HDF5ImageGenerator(horizontal_flip = True,
                          zoom_range = 0.3,
                          width_shift_range = 0.3,
                          height_shift_range = 0.3,
-                         rotation_range=45)
+                         rotation_range=45, data_format=data_format)
 
-fh = h5py.File(PATH+'/deeplearning/data/'+args.hdf5_file, 'r')
+print(fh['data'].shape)
 nsample = fh['data'].shape[0] // size
 offset = nsample*rank
 
@@ -87,7 +99,11 @@ dtinv = 1./(t4 - t3)
 dtinv_avg = comm.allreduce(dtinv,op=MPI.SUM)
 if comm.rank==0:
     print("*Throughput(flow_from_hdf5): %s imgs/s    --  %s MB/s" %(nbatch*batch_size*dtinv_avg, nbatch*batch_size*dtinv_avg*sz*sz*3*16/1024/1024))
-X=np.zeros((nsample, sz, sz, 3))
+if (data_format=='channels_first'):
+    X=np.zeros((nsample, 3, sz, sz))
+else:
+    X=np.zeros((nsample, sz, sz, 3))
+
 Y=np.zeros((nsample,)+ fh['labels'].shape[1:])
 gen.fit(X[0:1])
 flow = gen.flow(X, Y,  # Y
@@ -109,7 +125,7 @@ gen.fit(fh['data'][rank:rank+1])
 
 flow = gen.flow(fh['data'][offset:offset+nsample],  # X
                 fh['labels'][offset:offset+nsample],  # Y
-                batch_size=batch_size, 
+                batch_size=batch_size,
                 shuffle = shuffle,)
 it = range(nbatch)
 if rank==0:
@@ -127,7 +143,7 @@ fh.close()
 
 
 try:
-    fh = h5py.File('/scratch/train_nochunk.hdf5', 'r')
+    fh = h5py.File('/scratch/%s'%args.hdf5_file, 'r')
     gen.fit(fh['data'][rank:rank+1])
 
     flow = gen.flow(fh['data'][offset:offset+nsample],  # X

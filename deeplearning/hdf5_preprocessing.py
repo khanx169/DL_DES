@@ -15,7 +15,6 @@ def hdf5_from_directory(fname, directory, datagen,
                         shuffle=True,
                         class_mode='categorical',
                         batch_size=32,
-                        data_format='channels_last',
                         interpolation='nearest',
                         dtype=None, nsample=None, verbose=1, mpi=False, chunks=False):
     if (verbose!=0):
@@ -28,6 +27,7 @@ def hdf5_from_directory(fname, directory, datagen,
         classes=classes,
         class_mode=class_mode,
         batch_size=batch_size,
+        data_format=datagen.data_format, 
         shuffle=shuffle,
         follow_links=False,
         interpolation=interpolation)
@@ -51,9 +51,13 @@ def hdf5_from_directory(fname, directory, datagen,
         ds = f.create_dataset('data', shape=x_shape, dtype=dtype, chunks=chunks)
     else:
         ds = f.create_dataset('data', shape=x_shape, dtype=dtype)
-    ds.attrs['data_format'] = data_format
+    ds.attrs['data_format'] = datagen.data_format
     ds.attrs['shape'] = x_shape
     ds.attrs['image_shape'] = target_size
+    if (verbose!=0):
+        print(' data_format: %s' %datagen.data_format)
+        print('     x_shape: ', x_shape )
+        print('     y_shape: ', y_shape)
     if chunks:
         ys = f.create_dataset('labels', shape=y_shape, dtype=np.uint8, chunks=True)
     else:
