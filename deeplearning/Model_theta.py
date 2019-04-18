@@ -10,13 +10,9 @@ parser = argparse.ArgumentParser(description="Deap Learning cosmology classifica
 parser.add_argument('--batch_size',type=int, help='batch size', default=64)
 parser.add_argument('--sz', type=int, help='size of the figure in each dimension', default=224)
 parser.add_argument('--PATH', help='root directory', default='/lus/theta-fs0/projects/mmaADSP/hzheng/new_DL_DES/')
-parser.add_argument('--num_gpus_per_node', type=int, help='number of GPUs per node', default=2)
-parser.add_argument('--device', help="device type: cpu or gpu", default='cpu')
 parser.add_argument('--verbose', type=int, help='output level', default=2)
 parser.add_argument('--num_intra', type=int, help='Number of intra threads', default=0)
 parser.add_argument('--num_inter', type=int, help='Number of inter threads', default=2)
-parser.add_argument('--num_workers', type=int, help='Number of workers in reading data', default=1)
-parser.add_argument('--use_multiprocessing',action='store_true', help='multiprocessing in data generator')
 parser.add_argument('--horovod', action='store_true', help='Whether use horovod')
 parser.add_argument('--model', default='Xception', help='Choose model between Inception3, Xception, ResNet, VGG16, VGG19')
 parser.add_argument('--warmup_epochs', type=int, default=2, help='Warmup ephochs')
@@ -26,18 +22,14 @@ parser.add_argument('--early_stop', action='store_true', help='Whether to do ear
 parser.add_argument('--epochs_1', type=int, default=1, help='Number of epoch for the first stage')
 parser.add_argument('--epochs_2', type=int, default=20, help='Number of epoch for the second stage')
 parser.add_argument('--epochs_3', type=int, default=20, help='Number of epoch for the third stage')
-parser.add_argument('--hdf5', action='store_true', help='Train from hdf5 file or not')
-parser.add_argument('--use_flow', action='store_true', help='use flow method')
-parser.add_argument('--splitdata', action='store_true', help='Whether to split data or not')
 parser.add_argument('--save_model', default='Model_Final.h5', help='Whether to split data or not')
 parser.add_argument('--data_format', default='channels_last', help='dataformat: channels_first or channels_last')
+parser.add_argument('--shuffle', action='store_true')
 args = parser.parse_args()
-num_workers=args.num_workers
 PATH = args.PATH
 sz=args.sz
 batch_size=args.batch_size
-num_gpus_per_node=args.num_gpus_per_node
-device=args.device
+shuffle=args.shuffle
 lr = args.learning_rate
 # In[67]:
 
@@ -94,22 +86,10 @@ if hvd.rank()==0:
     print("* Keras data format: %s"%K.image_data_format())
     print("*************************************************")
 #### Setup session
-if device=='gpu':
-    if hvd.rank()==0:
-        print("Using GPUs")
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    if (args.horovod):
-        config.gpu_options.visible_device_list = str(hvd.local_rank()%num_gpus_per_node)
-    else:
-        config.gpu_options.visible_device_list = '0'
-else:
-    if device!="cpu" and hvd.rank()==0:
-        print("I do not know %s. CPU is assumed"%device)
-    config = tf.ConfigProto(intra_op_parallelism_threads=args.num_intra,
-                            inter_op_parallelism_threads=args.num_inter)
-    os.environ["CUDA_VISIBLE_DEVICES"]='-1'
 
+config = tf.ConfigProto(intra_op_parallelism_threads=args.num_intra,
+                        inter_op_parallelism_threads=args.num_inter)
+os.environ["CUDA_VISIBLE_DEVICES"]='-1'
 K.set_session(tf.Session(config=config))
 
 #### define output verbose level
@@ -121,126 +101,28 @@ else:
 
 # In[71]:
 step_rescale=hvd.size()
-if args.splitdata and args.horovod and hvd.size()>1 and (not args.hdf5):
-    sys.path.append(PATH+"/deeplearning/")
-    from splitdata import *
-    if (hvd.rank()==0):
-        print("Creating split datasets for different ranks (using symbolic links)")
-    t0 = time()
-    train_data_dir = SplitData(PATH+'deeplearning/data/train/', PATH+'deeplearning/data/trainsplit-%s/'%hvd.size(), hvd)
-    validation_data_dir = SplitData(PATH+'deeplearning/data/valid/', PATH+'deeplearning/data/validsplit-%s/'%hvd.size(), hvd)
-    hvd.allreduce([0]) # this is to put a barrier to ensure that we have all the data.
-    t1 = time()
-    if (hvd.rank()==0):
-        print('** Total time for split data: %s second' %(t1 - t0))
-    step_rescale=1
-else:
-    train_data_dir = PATH+'deeplearning/data/train/'
-    validation_data_dir = PATH+'deeplearning/data/valid/'
+train_data_dir = PATH+'deeplearning/data/train/'
+validation_data_dir = PATH+'deeplearning/data/valid/'
 
+from hdf5_preprocessing import *
 
-if args.hdf5:
-    from hdf5_preprocessing import *
-    step_rescale=1
-    train_fh = h5py.File(PATH+'/deeplearning/data/train_%s.hdf5'%args.data_format, 'r')
-#    train_fh = h5py.File(PATH+'/deeplearning/data/train_nochunk.hdf5', 'r')
-    train_datagen = HDF5ImageGenerator(
-        #    rescale = 1./255,  # The scaling has already been taken care of in the hdf5 files.
-        horizontal_flip = True,
-        vertical_flip = True,
-        fill_mode = "nearest",
-        zoom_range = 0.3,
-        width_shift_range = 0.3,
-        height_shift_range=0.3,
-        rotation_range=45, 
-        data_format=args.data_format)
-    valid_datagen = HDF5ImageGenerator(data_format=args.data_format)# The scaling has already be taken care of in the hdf5 
+train_fh = h5py.File(PATH+'/deeplearning/data/train_%s.hdf5'%args.data_format, 'r')
+ntrain = train_fh['data'].shape[0]
+ntrain_loc = ntrain//hvd.size()
+train_offset = ntrain_loc*hvd.rank()
+valid_fh = h5py.File(PATH+'/deeplearning/data/valid_%s.hdf5'%args.data_format, 'r')
+nvalid = valid_fh['data'].shape[0]
+nvalid_loc = nvalid//hvd.size()
+valid_offset = nvalid_loc*hvd.rank()
+t0=time()
+X_train = train_fh['data'][train_offset:train_offset+ntrain_loc]
+Y_train = train_fh['labels'][train_offset:train_offset+ntrain_loc]
 
-    #calculating the offset for different ranks    
-    ntrain = train_fh['data'].shape[0]
-
-    ntrain_loc = ntrain//hvd.size()
-    train_offset = ntrain_loc*hvd.rank()
-    print(ntrain, ntrain_loc)
-    if args.use_flow:
-        train_datagen.fit(train_fh['data'][train_offset:train_offset+1])
-        train_generator = train_datagen.flow(train_fh['data'][train_offset:train_offset+ntrain_loc],
-                                             train_fh['labels'][train_offset:train_offset+ntrain_loc],
-                                             batch_size = batch_size,
-                                             shuffle = True)
-    else:
-        train_generator = train_datagen.flow_from_hdf5(
-            train_fh, 
-            #        target_size = (sz, sz),# I already did the interpolation in HDF5
-            batch_size = batch_size, 
-            #        class_mode = "categorical", # this is not needed any more.
-            shuffle = True,
-            #        interpolation = 'nearest',
-            offset=train_offset, nsample=ntrain_loc)
-    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_%s.hdf5'%args.data_format, 'r')
-#    valid_fh = h5py.File(PATH+'/deeplearning/data/valid_nochunk.hdf5', 'r')
-    #calculating the offset for different ranks
-    nvalid = valid_fh['data'].shape[0]
-    nvalid_loc = nvalid//hvd.size()
-    valid_offset = nvalid_loc*hvd.rank()
-    if args.use_flow:
-        valid_datagen.fit(valid_fh['data'][valid_offset:valid_offset+1])
-        validation_generator = valid_datagen.flow(valid_fh['data'][valid_offset:valid_offset+nvalid_loc],
-                                                  valid_fh['labels'][valid_offset:valid_offset+nvalid_loc],
-                                                  batch_size = 1,
-                                                  shuffle=True)
-    else:
-        validation_generator = valid_datagen.flow_from_hdf5(
-            valid_fh,
-            #        target_size = (sz, sz),
-            batch_size = 1,
-            #        class_mode = "categorical",
-            shuffle = False,
-            #        interpolation = 'nearest',
-            offset=valid_offset, nsample=nvalid_loc)
-else:
-    train_datagen = ImageDataGenerator(
-        rescale = 1./255,
-        horizontal_flip = True,
-        vertical_flip = True,
-        fill_mode = "nearest",
-        zoom_range = 0.3,
-        width_shift_range = 0.3,
-        height_shift_range=0.3,
-        rotation_range=45, data_format=args.data_format)
-    
-    valid_datagen = ImageDataGenerator(rescale = 1./255, data_format=args.data_format)
-    
-    test_datagen = ImageDataGenerator(
-        rescale = 1./255,
-        horizontal_flip = True,
-        vertical_flip = True,
-        fill_mode = "nearest",
-        zoom_range = 0.3,
-        width_shift_range = 0.3,
-        height_shift_range=0.3,
-        rotation_range=45, data_format=args.data_format)
-    train_generator = train_datagen.flow_from_directory(
-        train_data_dir,
-        target_size = (sz, sz),
-        batch_size = batch_size, 
-        class_mode = "categorical",
-        shuffle = True,
-        interpolation = 'nearest')
-
-    validation_generator = valid_datagen.flow_from_directory(
-        validation_data_dir, 
-        target_size = (sz, sz),
-        batch_size = 1,
-        class_mode = "categorical",
-        shuffle = False,
-        interpolation = 'nearest')
-
-
-# # 3. Define Model 
-
-# In[73]:
-
+X_valid = valid_fh['data'][valid_offset:valid_offset+nvalid_loc]
+Y_valid = valid_fh['labels'][valid_offset:valid_offset+nvalid_loc]
+t1=time()
+if hvd.rank()==0:
+    print(" Loading data: %s seconds" %(t1 - t0))
 num_of_classes = 2
 if args.model == 'InceptionV3':
     base_model = InceptionV3(input_shape=input_shape, weights='imagenet', include_top=False)
@@ -291,15 +173,11 @@ if (args.horovod):
                  hvd.callbacks.LearningRateWarmupCallback(warmup_epochs=args.warmup_epochs, verbose=verbose)]
 else:
     callbacks = []
-history_1 = model_final.fit_generator(
-    train_generator,
-    steps_per_epoch = (train_generator.n // train_generator.batch_size)//step_rescale,
-    epochs = args.epochs_1,
-    workers=num_workers, 
-    use_multiprocessing=args.use_multiprocessing,
-    validation_data = validation_generator,
-    validation_steps = (validation_generator.n // validation_generator.batch_size)//step_rescale, 
-    verbose=verbose, callbacks=callbacks) 
+history_1 = model_final.fit(X_train, Y_train, validation_data = (X_valid, Y_valid), 
+                            batch_size = batch_size, 
+                            shuffle = shuffle,
+                            epochs = args.epochs_1,
+                            verbose=verbose, callbacks=callbacks) 
 t1 = time()
 
 if args.intermediate_score:
@@ -349,13 +227,11 @@ if hvd.rank()==0:
 
 
 t0 = time()
-history2 = model_final.fit_generator(train_generator, steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
-                                     epochs=args.epochs_2, workers=num_workers,
-                                     use_multiprocessing=args.use_multiprocessing,
-                                     validation_data=validation_generator, 
-                                     validation_steps=validation_generator.n // (validation_generator.batch_size)//step_rescale, 
-                                     callbacks=callbacks, 
-                                     verbose=verbose)
+history2 = model_final.fit(X_train, Y_train, validation_data = (X_valid, Y_valid), 
+                            batch_size = batch_size, 
+                            shuffle = shuffle,
+                            epochs = args.epochs_2,
+                            verbose=verbose, callbacks=callbacks) 
 t1 = time()
 
 # #### (iii) Unfreeze [at Layer 2] 
@@ -403,17 +279,15 @@ else:
 
 #get_ipython().run_cell_magic('time', '', '
 t0 = time()
-history3 = model_final.fit_generator(train_generator, 
-                                     steps_per_epoch=(train_generator.n // train_generator.batch_size)//step_rescale, 
-                                     epochs=args.epochs_3, workers=num_workers,   
-                                     use_multiprocessing=args.use_multiprocessing,
-                                     validation_data=validation_generator, 
-                                     validation_steps=(validation_generator.n // validation_generator.batch_size)//step_rescale, 
-                                     callbacks=callbacks, 
-                                     verbose=verbose)
+history3 = model_final.fit(X_train, Y_train, validation_data = (X_valid, Y_valid), 
+                            batch_size = batch_size, 
+                            shuffle = shuffle,
+                            epochs = args.epochs_3,
+                            verbose=verbose, callbacks=callbacks) 
+
 t1 = time()
-train_score = hvd.allreduce(model_final.evaluate_generator(train_generator, train_generator.n//train_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
-val_score = hvd.allreduce(model_final.evaluate_generator(validation_generator, validation_generator.n//validation_generator.batch_size//step_rescale, workers=num_workers, verbose=verbose))
+train_score = hvd.allreduce(model_final.evaluate(X_train, Y_train, verbose=verbose))
+train_score = hvd.allreduce(model_final.evaluate(X_valid, Y_valid, verbose=verbose))
 t2 = time()
 if (hvd.rank()==0):
     print('**AllReduce  loss: %s  -  acc: %s  -  val_loss: %s  -  val_acc: %s\n Total time for Stage 3: %s seconds' 

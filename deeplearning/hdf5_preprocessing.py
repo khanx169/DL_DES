@@ -83,7 +83,7 @@ def hdf5_from_directory(fname, directory, datagen,
     f.close()
     print('-----------------------------------')
 
-class HDF5ArrayIterator(Iterator):
+class HDF5ArrayIterator(image.Iterator):
     def __init__(self, fh,
                  image_data_generator,
                  batch_size=32,
